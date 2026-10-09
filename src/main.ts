@@ -14,7 +14,9 @@ import { createThreeRenderer } from './render/three/renderer';
 import { loadPlayerModel, MODEL } from './render/three/model';
 import type { FieldRenderer, ViewState } from './render/types';
 import { updateFloaters, updateHud } from './ui/hud';
+import { createLobby } from './ui/lobby';
 import { createPanel, toast } from './ui/panel';
+import { createSession, type NetSession } from './net/session';
 
 const S: Settings = loadSettings(browserStore());
 const sim = createSim(S);
@@ -33,11 +35,16 @@ function setRenderer(name: 'three' | 'canvas2d') {
 }
 setRenderer(S.renderer === 'canvas2d' ? 'canvas2d' : 'three');
 
+let session: NetSession;
 const panel = createPanel({
   S,
   sim,
   getRenderer: () => renderer,
   setRenderer,
+  netActive: () => {
+    const phase = session?.phase;
+    return phase === 'lobby' || phase === 'play' || phase === 'ended';
+  },
 });
 const { gui, sandbox } = panel;
 
@@ -81,27 +88,28 @@ function frame(now: number) {
     if (inp.throwPower === null) inp.throwPower = carry.throwPower;
     carry = null;
   }
-  if (meta.mode) panel.setMode(nextMode(st.mode));
+  const online = session.phase === 'play';
+  if (!online && meta.mode) panel.setMode(nextMode(st.mode));
   sandbox.controlling = st.controlled.toUpperCase();
-  if (st.mode === 'catch' && meta.start && st.cm?.phase !== 'carry') {
+  if (!online && st.mode === 'catch' && meta.start && st.cm?.phase !== 'carry') {
     S.catchPaused = !S.catchPaused;
     toast(S.catchPaused ? 'Throws paused' : 'Throws resumed');
     panel.refresh();
     meta.start = false;
     inp.start = false;
   }
-  if (meta.switch) panel.switchControl();
-  if (meta.reset || (meta.start && !(st.controlled === 'wr' && st.ball.holder === 'qb' && st.play.phase !== 'over'))) {
+  if (!online && meta.switch) panel.switchControl();
+  if (!online && (meta.reset || (meta.start && !(st.controlled === 'wr' && st.ball.holder === 'qb' && st.play.phase !== 'over')))) {
     sim.reset();
     meta.start = false;
     inp.start = false;
   }
-  if (meta.routeDelta) {
+  if (!online && meta.routeDelta) {
     st.route = ROUTES[(ROUTES.indexOf(st.route as typeof ROUTES[number]) + meta.routeDelta + ROUTES.length) % ROUTES.length];
     sandbox.route = st.route;
     sim.reset(true);
   }
-  if (meta.route) { st.route = meta.route; sandbox.route = st.route; sim.reset(true); }
+  if (!online && meta.route) { st.route = meta.route; sandbox.route = st.route; sim.reset(true); }
   if (meta.toggleRenderer) {
     setRenderer(renderer.name === 'three' ? 'canvas2d' : 'three');
     panel.refresh();
@@ -110,30 +118,37 @@ function frame(now: number) {
   if (meta.toggleHelp) hud.help.classList.toggle('hidden');
   if (meta.posePreview) sandbox.posePreview = !sandbox.posePreview;
 
-  const qb = st.players.qb;
+  const thrower = localThrower();
   let reticle: { x: number; y: number } | null = null;
-  if (st.mode === 'throw' && st.controlled === 'qb' && qb) {
+  if (thrower) {
     let a: { x: number; y: number };
     if (inp.aimSpec.mode === 'mouse') {
       const w = renderer.screenToField(inp.aimSpec.x, inp.aimSpec.y);
-      a = w || { x: qb.x, y: qb.y + 12 };
-    } else a = { x: qb.x + inp.aimSpec.offset.x, y: qb.y + inp.aimSpec.offset.y };
-    const dx = a.x - qb.x, dy = a.y - qb.y, d = Math.hypot(dx, dy);
-    if (d > S.maxAimRange) a = { x: qb.x + dx / d * S.maxAimRange, y: qb.y + dy / d * S.maxAimRange };
+      a = w || { x: thrower.x, y: thrower.y + 12 };
+    } else a = { x: thrower.x + inp.aimSpec.offset.x, y: thrower.y + inp.aimSpec.offset.y };
+    const dx = a.x - thrower.x, dy = a.y - thrower.y, d = Math.hypot(dx, dy);
+    if (d > S.maxAimRange) a = { x: thrower.x + dx / d * S.maxAimRange, y: thrower.y + dy / d * S.maxAimRange };
     inp.aim = a;
-    if (st.ball.holder === 'qb') reticle = a;
+    if (st.ball.holder === thrower.id) reticle = a;
   }
+  if (window.__netInput) Object.assign(inp, window.__netInput);
   if (!reticle && st.ball.state === 'air' && st.ball.aimed) reticle = st.ball.aimed;
 
-  acc += dt;
-  let first = true;
-  while (acc >= STEP) {
-    const i: SimInput = first ? inp : { ...inp, sprint: false, y: false, rt: false, rb: false, a: false, x: false, b: false, start: false, throwPower: null };
-    sim.step(STEP, i);
-    first = false;
-    acc -= STEP;
+  if (session.phase === 'lobby' || session.phase === 'play') session.tick(dt, online ? inp : null);
+  if (!online) {
+    acc += dt;
+    let first = true;
+    while (acc >= STEP) {
+      const i: SimInput = first ? inp : { ...inp, sprint: false, y: false, rt: false, rb: false, a: false, x: false, b: false, start: false, throwPower: null };
+      sim.step(STEP, i);
+      first = false;
+      acc -= STEP;
+    }
+    if (first) carry = inp;
+  } else {
+    acc = 0;
+    carry = null;
   }
-  if (first) carry = inp;
 
   const b = st.ball;
   const pts: { x: number; y: number }[] = [...Object.values(st.players), { x: b.x, y: b.y }];
@@ -159,8 +174,9 @@ function frame(now: number) {
   cam.y += (ty - cam.y) * k;
   cam.ext += (needH - cam.ext) * (needH > cam.ext ? Math.min(1, k * 2.5) : k * 0.6);
 
+  const qb = st.players.qb;
   let preview = null;
-  if (qb && st.controlled === 'qb' && st.ball.holder === 'qb' && inp.charge !== null && reticle) preview = sim.previewThrow(inp.charge, reticle).arc;
+  if (thrower && st.ball.holder === thrower.id && inp.charge !== null && reticle) preview = sim.previewThrow(inp.charge, reticle).arc;
   const route = (st.mode === 'coverage' || (st.mode === 'throw' && st.controlled === 'qb')) && st.play.phase !== 'over' && st.ball.holder === 'qb'
     ? [{ x: 12, y: LOS_Y - 0.6 }, ...sim.routeWaypoints(st.route)]
     : null;
@@ -186,7 +202,18 @@ function frame(now: number) {
   renderer.render();
   updateHud({ st, S, inp, input, rendererName: renderer.name, stats: hud.stats, fb: hud.fb, pad: hud.pad, power: hud.power, prompt: promptEl });
   updateFloaters({ st, renderer, poseSheet: !!viewState.poseSheet, floatEl });
+  lobby.paintStats();
   requestAnimationFrame(frame);
+}
+
+function localThrower() {
+  if (st.mode === 'free') {
+    const id = st.ball.holder;
+    if (id && id === st.controlled) return st.players[id] ?? null;
+    return null;
+  }
+  if ((st.mode === 'throw' || st.mode === 'coverage') && st.controlled === 'qb') return st.players.qb ?? null;
+  return null;
 }
 
 const trailBuf: Record<string, { x: number; y: number; t: number }[]> = {};
@@ -213,6 +240,12 @@ function updateTrails() {
 declare global {
   interface Window {
     __sandbox?: unknown;
+    __net?: {
+      setInput(partial: Partial<SimInput> | null): void;
+      session: NetSession;
+    };
+    __netInput?: Partial<SimInput> | null;
+    __netSignal?: { host: string; port: number; path: string; secure: boolean };
   }
 }
 window.__sandbox = {
@@ -231,5 +264,14 @@ window.__sandbox = {
     if (preset) applyControlPreset(S, preset);
   },
 };
+
+let lobby: ReturnType<typeof createLobby>;
+session = createSession({ sim, S, onChange: () => lobby.update() });
+lobby = createLobby({ session });
+window.__net = {
+  setInput(partial) { window.__netInput = partial; },
+  session,
+};
+lobby.boot();
 
 requestAnimationFrame(frame);

@@ -183,6 +183,10 @@ export interface Settings {
   showArc: boolean;
   autoReset: boolean;
   renderer: 'three' | 'canvas2d';
+  /** Optional TURN server for strict NATs. Empty until someone fills it in. */
+  netTurnUrl: string;
+  netTurnUser: string;
+  netTurnCred: string;
 }
 
 export const DEFAULTS: Settings = {
@@ -359,6 +363,9 @@ export const DEFAULTS: Settings = {
   showArc: true,
   autoReset: true,
   renderer: 'three',
+  netTurnUrl: '',
+  netTurnUser: '',
+  netTurnCred: '',
 };
 
 const ENUMS: Partial<Record<keyof Settings, readonly string[]>> = {

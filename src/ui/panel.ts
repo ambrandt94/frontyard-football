@@ -53,6 +53,7 @@ export function createPanel(opts: {
   sim: Sim;
   getRenderer: () => FieldRenderer;
   setRenderer: (name: 'three' | 'canvas2d') => void;
+  netActive?: () => boolean;
 }) {
   const { S, sim } = opts;
   const st = sim.state;
@@ -64,13 +65,14 @@ export function createPanel(opts: {
   fileInput.hidden = true;
   document.body.appendChild(fileInput);
 
+  const netLocked = () => !!opts.netActive?.();
   const sandbox: SandboxUi = {
     posePreview: false,
     route: st.route,
     controlling: 'QB',
     mode: 'Throw',
     preset: '',
-    reset: () => sim.reset(),
+    reset: () => { if (netLocked()) { toast('The host is running this match'); return; } sim.reset(); },
     switchPlayer: () => switchControl(),
     resetDefaults: () => {
       Object.assign(S, DEFAULTS);
@@ -142,10 +144,12 @@ export function createPanel(opts: {
   }
 
   function switchControl() {
+    if (netLocked()) { toast('Slots are picked in the online lobby'); return; }
     if (!sim.switchControl()) { toast('Catch mode: you are always the receiver'); return; }
     sandbox.controlling = st.controlled.toUpperCase();
   }
   function setMode(m: ModeId) {
+    if (netLocked()) return;
     sim.setMode(m);
     sandbox.mode = MODE_LABEL[m];
     sandbox.controlling = st.controlled.toUpperCase();
@@ -155,13 +159,13 @@ export function createPanel(opts: {
   const fp = gui.addFolder('Play');
   fp.add(sandbox, 'mode', MODE_LABELS).name('Mode (N / D-pad ▲)').onChange((v: string) => setMode(modeFromLabel(v))).listen();
   fp.add(S, 'requireSnap').name('Require snap (A / Space)');
-  fp.add(sandbox, 'route', [...ROUTES]).name('WR route (AI)').onChange((v: string) => { st.route = v; sim.reset(true); }).listen();
+  fp.add(sandbox, 'route', [...ROUTES]).name('WR route (AI)').onChange((v: string) => { if (netLocked()) return; st.route = v; sim.reset(true); }).listen();
   fp.add(sandbox, 'controlling').name('Controlling').listen().disable();
   fp.add(sandbox, 'switchPlayer').name('Switch control (Tab / Back)');
   fp.add(sandbox, 'reset').name('Reset play (R / Start)');
   fp.add(S, 'autoSwitchCarrier').name('Auto-switch to receiver after catch');
   fp.add(S, 'throwPursuer').name('Throw: pursuer after catch');
-  fp.add(S, 'throwDefender').name('Throw: add defender').onChange(() => { if (st.mode === 'throw') sim.reset(); });
+  fp.add(S, 'throwDefender').name('Throw: add defender').onChange(() => { if (netLocked()) return; if (st.mode === 'throw') sim.reset(); });
 
   const fm = gui.addFolder('Movement');
   fm.add(S, 'accel', 5, 80, 0.5).name('accel (yd/s²)');
@@ -302,8 +306,8 @@ export function createPanel(opts: {
   fcm.close();
 
   const fcov = gui.addFolder('Coverage');
-  fcov.add(S, 'covAlign', ['off', 'press']).name('Alignment (press / off)').onChange(() => { if (st.mode === 'coverage' || S.throwDefender) sim.reset(); });
-  fcov.add(S, 'covShade', ['inside', 'outside']).name('Shade (inside / outside)').onChange(() => { if (st.mode === 'coverage' || S.throwDefender) sim.reset(); });
+  fcov.add(S, 'covAlign', ['off', 'press']).name('Alignment (press / off)').onChange(() => { if (netLocked()) return; if (st.mode === 'coverage' || S.throwDefender) sim.reset(); });
+  fcov.add(S, 'covShade', ['inside', 'outside']).name('Shade (inside / outside)').onChange(() => { if (netLocked()) return; if (st.mode === 'coverage' || S.throwDefender) sim.reset(); });
   fcov.add(S, 'covSep', 0.5, 8, 0.1).name('QB throws at separation (yd)');
   fcov.add(S, 'covMaxHold', 0.4, 5, 0.05).name('QB max hold (s)');
   fcov.add(S, 'covAccuracy', 0, 1, 0.01).name('QB accuracy');
@@ -350,6 +354,10 @@ export function createPanel(opts: {
   fc.add(S, 'aiTimingErrorMs', 0, 200, 5).name('AI catch timing σ (ms)');
   fc.add(S, 'autoThrowDelay', 0.5, 5, 0.1).name('AI QB throw delay (s)');
 
+  const fn = gui.addFolder('Online / TURN');
+  fn.add(S, 'netTurnUrl').name('TURN url (optional)');
+  fn.add(S, 'netTurnUser').name('TURN username');
+  fn.add(S, 'netTurnCred').name('TURN credential');
   const fv = gui.addFolder('View');
   fv.add(S, 'cameraMinExtent', 15, 120, 1).name('camera zoom: min yards visible').listen();
   fv.add(S, 'cameraPadding', 0, 20, 0.5).name('framing padding (yd)');
@@ -380,7 +388,7 @@ export function createPanel(opts: {
   gui.add(sandbox, 'resetDefaults').name('↺ Reset to defaults');
   gui.add(sandbox, 'copyJSON').name('⧉ Copy settings JSON');
   gui.onFinishChange(() => saveSettings(store, S));
-  [ft, fc, fv].forEach((f) => f.close());
+  [ft, fc, fv, fn].forEach((f) => f.close());
 
   function refresh() { gui.controllersRecursive().forEach((c) => c.updateDisplay()); }
   function presetOptions() {

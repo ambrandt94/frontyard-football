@@ -80,6 +80,10 @@ export interface Tackle {
 export interface Player {
   id: string;
   role: string;
+  /** Set while a net slot is occupied. Drawn above the player. */
+  name?: string;
+  /** Ring color for that net player. Role color is used when this is absent. */
+  tint?: number;
   x: number;
   y: number;
   vx: number;

@@ -30,6 +30,7 @@ Cycle with **N** or **D-pad up**, or the Mode dropdown.
 - **1v1 Run** — ball carrier versus one defender, with a trailing back. Truck, spin, juke, sidestep, hurdle, dive, stiff-arm, pitch, and tackle.
 - **Catch** — you are always the receiver. Snap (or call for it) and the QB throws the next ball, led to where you will be when it arrives (the same lead the Throw-mode quarterback uses). Three throws per depth band, then it switches. The quarterback sets up behind the way you are heading. A stationary rep still makes you move, but the spot is ahead or to the side, not behind you. A catch turns into the same carrier controls, toward a target line 20 yards past the catch or the end zone, whichever is closer. A pursuer is on by default. The next throw waits until that run ends.
 - **Coverage** — 1-on-1 coverage, built on the Throw play. You start as the defender. Back or Tab switches you to the receiver; the other one is AI. A bot quarterback throws when the receiver's separation crosses the threshold, or when the max hold time runs out, leading the receiver with a mix of lobs and bullets. The receiver runs a random route. Outcomes are INCOMPLETE, PBU (bat), INT, CATCH, then yards after the catch until a tackle or a score, plus FLAG if the arm-check is held too long. An interception makes the defender the ball carrier on a return toward the home end zone. The HUD keeps targets, catches allowed, PBUs, INTs, and average separation at the throw.
+- **Throw Around** — a loose game of catch for two to six players. Whoever has the ball can throw it to anyone else. A catch does not end the play. Offline, you and one AI start on the field. Online, the host sets how many bodies spawn and friends fill the slots.
 
 ## Controls
 
@@ -88,7 +89,7 @@ The **Sandbox settings** panel (lil-gui) is the live tuning UI. Every change is 
 Settings are a versioned document:
 
 ```json
-{ "schemaVersion": 4, "values": { "accel": 30 } }
+{ "schemaVersion": 5, "values": { "accel": 30 } }
 ```
 
 On load, unknown keys are ignored and missing keys are filled from the defaults, including older flat saves from the original one-file prototype. A newer `schemaVersion` still merges the keys this build knows.
@@ -123,16 +124,17 @@ index.html                 page shell and the control card
 src/main.ts                fixed-timestep loop, camera, wiring
 src/config/                constants, default tuning, settings schema + presets
 src/sim/                   simulation only — no DOM, no Three.js
-src/modes/                 mode ids and labels (Throw, 1v1 Run, Catch, Coverage)
+src/modes/                 mode ids and labels (Throw, 1v1 Run, Catch, Coverage, Throw Around)
 src/input/                 gamepad first, keyboard and mouse fallback
+src/net/                   lobby session, snapshots, and the PeerJS transport behind a small interface
 src/render/three/          Three.js renderer, skinned player, procedural poses
 src/render/canvas2d/       flat canvas renderer
 src/render/field.ts        shared field drawing
-src/ui/                    HUD, sprint meter, lil-gui panel
+src/ui/                    HUD, sprint meter, lil-gui panel, online lobby
 public/assets/             player.glb, base color, ORM map
 ```
 
-The sim steps at a fixed `1/120` second. Random rolls go through an injectable RNG (`src/sim/rng.ts`); the browser uses `Math.random`, tests use a seeded generator. There is no networking in this build.
+The sim steps at a fixed `1/120` second. Random rolls go through an injectable RNG (`src/sim/rng.ts`); the browser uses `Math.random`, tests use a seeded generator. Online play reuses that sim on the host.
 
 The player is a 24-bone humanoid with a walk clip. Poses (throw, catch, sprint, truck, and the rest) are a table of bone offsets blended on top of that clip. If the model cannot load, players fall back to capsules. Team defense recolors the navy texels maroon.
 
@@ -142,6 +144,18 @@ Pushes to `main` run `.github/workflows/pages.yml`, the only workflow in this re
 
 **Settings → Pages → Build and deployment → Source** has to stay **GitHub Actions**. GitHub also keeps a managed `pages-build-deployment` workflow. While Source is a branch, that workflow publishes the repository root with Jekyll — the unbuilt `index.html` that loads `/src/main.ts` — and that publish can land after the Vite deploy and replace the game. With Source set to GitHub Actions, only `pages.yml` publishes.
 
-## Later: multiplayer
+## Online
 
-The Pages site stays the client. An authoritative server (for example [Colyseus](https://colyseus.io/)) would run this same `src/sim` code: clients send inputs, the server steps the sim, and it sends state back. The fixed timestep and injectable RNG are there so that step can be shared without dragging Three.js or the DOM onto the server. Networking is not wired up yet.
+Click **Online**. **Host game** makes a 4-character room code and a link like `https://ambrandt94.github.io/frontyard-football/?room=CODE`. Send either one. **Join** types the code. A `?room=` link joins by itself, using the name saved in the browser or “Guest”.
+
+The host picks the mode and hits **Start**. Each person picks a slot. Empty slots are AI. Throw and Coverage have quarterback, receiver, and defender. 1v1 Run has carrier and defender. Throw Around puts everyone on the field (2–6) and whoever has the ball can throw it. Catch mode stays single-player. Snap is **A** from the host or the quarterback (or the carrier in 1v1). Names sit over the players, with a colored ring per person. `` ` `` or **Net** shows ping and snapshot rate.
+
+This is peer-to-peer. The host's browser runs `src/sim`. Everyone else sends their stick, triggers, and buttons. The host steps at 60 Hz (two of the usual 1/120 sim steps, so the physics match solo play) and broadcasts snapshots at 20 Hz. Clients **interpolate** those snapshots. They do not predict their own player. You are looking about a tenth of a second behind the host, plus half the ping. The host is watching the live sim, so the host has less delay. That is the host advantage.
+
+Signaling uses the public [PeerJS](https://peerjs.com/) broker (`0.peerjs.com`). There is no account and no server of ours. Google's public STUN server is included. A strict NAT can still fail to connect until someone puts a TURN server in **Online / TURN** in the settings panel (`netTurnUrl`, `netTurnUser`, `netTurnCred`). Those fields start empty. Gameplay tuning is copied from the host when you join, so the physics match. Camera, player scale, and the TURN login stay on your machine.
+
+If a player drops, their slot goes back to AI and they can rejoin the same code. A closed tab is treated as gone after a few seconds without a reply. If the host leaves, the room ends and everyone sees that message. The host tab has to stay open and in the foreground. Browsers slow a background tab down, and that stalls the sim for everyone.
+
+### Later: a dedicated server
+
+`src/net` keeps PeerJS behind a transport interface (`NetTransport`). A [Colyseus](https://colyseus.io/) (or any WebSocket) server can replace that transport and run this same `src/sim`: clients still send input frames, the server steps, and it sends the same snapshots. The Pages site would stay the client. Interpolation-only is the v1 client; a predicted local player can be added on the client side of that interface without changing the sim.

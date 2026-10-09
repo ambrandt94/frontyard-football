@@ -91,6 +91,7 @@ export function createCanvasRenderer(S: Settings): FieldRenderer {
         const p = st.players[id];
         const [x, y] = P(p.x, p.y);
         if (view.showReach && id === 'df') ring(p.x, p.y, p.tackle && p.tackle.kind === 'dive' ? S.diveTackleReach : S.wrapReach, p.tackle ? '#ff5252' : p.squared ? '#ffab40' : 'rgba(255,255,255,.3)', 2);
+        if (p.tint != null) ring(p.x, p.y, 1.15, '#' + p.tint.toString(16).padStart(6, '0'), 3);
         if (st.controlled === id) ring(p.x, p.y, 0.9, '#ffd54a', 3);
         if (p.callT != null && st.t - p.callT < 0.9) {
           const [cx, cy] = P(p.x, p.y + 1.2);

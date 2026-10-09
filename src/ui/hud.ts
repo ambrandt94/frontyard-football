@@ -34,7 +34,8 @@ export function updateHud(opts: {
   prompt: HTMLElement;
 }) {
   const { st, S, inp, input, rendererName, stats, fb, pad, power, prompt } = opts;
-  const me = st.players[st.controlled];
+  const me = st.players[st.controlled] ?? Object.values(st.players)[0];
+  if (!me) return;
   const sp = Math.hypot(me.vx, me.vy);
   const flags = [
     me.planted && (me.planted.falling ? 'TOE-TAP FALL' : 'STRETCH ' + Math.round(me.stretch * 100) + '%'),
@@ -95,6 +96,17 @@ export function updateHud(opts: {
     <div class="row"><span>State</span><b>${flags}</b></div>
     <div class="row"><span>Play</span><b>${st.play.phase}</b></div>
     <div class="row"><span>Input</span><b>${input.padConnected ? 'gamepad ✓' : 'kb+mouse'} · ${rendererName}</b></div>`;
+  } else if (st.mode === 'free') {
+    const n = Object.keys(st.players).length;
+    stats.innerHTML = `
+    <div class="row"><span>Mode</span><b style="color:#80cbc4">THROW AROUND</b></div>
+    <div class="row"><span>Ball</span><b>${st.ball.holder ? (st.players[st.ball.holder]?.name || st.ball.holder) : st.ball.state}</b></div>
+    <div class="row"><span>You</span><b>${me.name || st.controlled}</b></div>
+    <div class="row"><span>On the field</span><b>${n}</b></div>
+    <div class="row"><span>Speed</span><b>${sp.toFixed(1)} yd/s</b></div>
+    ${meter}
+    <div class="row"><span>State</span><b>${flags}</b></div>
+    <div class="row"><span>Input</span><b>${input.padConnected ? 'gamepad ✓' : 'kb+mouse'} · ${rendererName}</b></div>`;
   } else if (st.mode === 'run') {
     const c = st.players.rb, d = st.players.df, rs = st.runScore;
     const yds = Math.max(0, 110 - c.y);
@@ -142,7 +154,9 @@ export function updateHud(opts: {
   fb.style.color = feedback ? feedback.color : '#fff';
   fb.style.opacity = age < 1.4 ? '1' : '0';
   pad.style.display = input.padConnected ? 'none' : 'block';
-  const showPow = st.mode === 'throw' && st.controlled === 'qb' && st.ball.holder === 'qb' && inp.charge !== null;
+  const throwing = (st.mode === 'throw' && st.controlled === 'qb' && st.ball.holder === 'qb')
+    || (st.mode === 'free' && st.ball.holder === st.controlled);
+  const showPow = throwing && inp.charge !== null;
   power.style.display = showPow ? 'block' : 'none';
   if (showPow && inp.charge !== null) {
     const fill = power.querySelector('.fill') as HTMLElement | null;
@@ -163,7 +177,13 @@ export function updateFloaters(opts: {
   for (const f of st.floaters) {
     const age = st.t - f.t;
     const s = renderer.fieldToScreen(f.x, f.y, 2.2);
-    html += `<div style="left:${s.x}px;top:${s.y - age * 40}px;color:${f.color};opacity:${clamp(1.3 - age, 0, 1)}">${f.text}</div>`;
+    html += `<div style="left:${s.x}px;top:${s.y - age * 40}px;color:${f.color};opacity:${clamp(1.3 - age, 0, 1)}">${esc(f.text)}</div>`;
+  }
+  for (const p of Object.values(st.players)) {
+    if (!p.name) continue;
+    const s = renderer.fieldToScreen(p.x, p.y, 2.5);
+    const col = p.tint != null ? '#' + p.tint.toString(16).padStart(6, '0') : '#fff';
+    html += `<div class="nameplate" style="left:${s.x}px;top:${s.y}px;color:${col}">${esc(p.name)}</div>`;
   }
   if (poseSheet && renderer.sheetLabels) {
     for (const l of renderer.sheetLabels()) {
@@ -172,4 +192,8 @@ export function updateFloaters(opts: {
     }
   }
   floatEl.innerHTML = html;
+}
+
+function esc(s: string) {
+  return s.replace(/[&<>"]/g, (c) => (c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : '&quot;'));
 }

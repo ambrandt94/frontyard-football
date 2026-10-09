@@ -29,3 +29,23 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1a0e; fon
 #floaters div { position: absolute; transform: translate(-50%, -100%); font-weight: 900; font-size: 20px; letter-spacing: 1px; white-space: nowrap; text-shadow: 0 2px 0 #000, 0 0 8px rgba(0, 0, 0, .8); }
 #help .mode-run { color: #ffab40; }
 #toast { position: fixed; bottom: 60px; right: 20px; background: #1d3b24; padding: 6px 12px; border-radius: 6px; font-size: 12px; display: none; z-index: 20; }
+#floaters .nameplate { font-size: 13px; font-weight: 700; letter-spacing: 0; }
+#net-open, #net-stats-btn { position: fixed; z-index: 36; background: #1d3b24; color: #eef; border: 1px solid rgba(255,255,255,.2); border-radius: 6px; padding: 6px 10px; font: inherit; font-size: 13px; cursor: pointer; }
+#net-open { top: 78px; left: 50%; transform: translateX(-50%); }
+#net-stats-btn { top: 78px; left: calc(50% + 52px); }
+#net-open.hidden, #net-stats-btn.hidden, #netstats.hidden, #lobby.hidden, #lobby .hidden { display: none; }
+#netstats { position: fixed; top: 112px; left: 50%; transform: translateX(-50%); z-index: 36; background: rgba(8,14,10,.88); border: 1px solid rgba(255,255,255,.15); border-radius: 6px; padding: 6px 8px; font-size: 12px; }
+#lobby { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.45); }
+#lobby .card { width: min(440px, calc(100% - 24px)); background: #122016; border: 1px solid rgba(255,255,255,.16); border-radius: 10px; padding: 14px 16px; }
+#lobby h2 { margin: 0 0 6px; font-size: 18px; color: #9fe39f; }
+#lobby .hint, #lobby p { margin: 0 0 10px; color: #c9d6cc; font-size: 13px; }
+#lobby label { display: block; font-size: 12px; margin: 8px 0; color: #c9d6cc; }
+#lobby input, #lobby select { width: 100%; box-sizing: border-box; margin-top: 3px; background: #0b1a0e; color: #eef; border: 1px solid rgba(255,255,255,.2); border-radius: 4px; padding: 6px 8px; font: inherit; }
+#lobby .row { display: flex; gap: 8px; align-items: center; }
+#lobby .row input { flex: 1; margin-top: 0; }
+#lobby button { background: #1e4d2b; color: #eef; border: 1px solid rgba(255,255,255,.2); border-radius: 6px; padding: 6px 10px; font: inherit; cursor: pointer; }
+#lobby .code-line { font-size: 16px; }
+#lobby .code-line b { font-size: 22px; letter-spacing: 3px; color: #ffd54a; }
+#lobby ul { list-style: none; margin: 8px 0; padding: 0; }
+#lobby li { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,.08); font-size: 13px; }
+#net-status { min-height: 1.2em; color: #ffd54a; }

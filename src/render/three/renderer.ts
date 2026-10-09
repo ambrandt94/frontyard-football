@@ -313,7 +313,7 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
         }
         v.team.visible = !view.poseSheet;
         v.team.position.set(p.x, 0.025, -p.y);
-        basic(v.team).color.setHex(PLAYER_COLORS[p.role] || 0xcccccc);
+        basic(v.team).color.setHex(p.tint ?? PLAYER_COLORS[p.role] ?? 0xcccccc);
         v.mat.color.setHex(PLAYER_COLORS[p.role] || 0xcccccc);
         v.team.scale.setScalar(S.playerScale);
         v.g.scale.setScalar(S.playerScale);
