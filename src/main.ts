@@ -3,7 +3,7 @@ import { DEFAULTS, type Settings } from './config/defaults';
 import { applyControlPreset, BUILTIN_PRESETS } from './config/presets';
 import { browserStore, loadSettings, saveSettings } from './config/settings';
 import { CAM_FOV, FIELD_W, LOS_Y, ROUTES, STEP } from './config/constants';
-import { nextMode, type ModeId } from './modes';
+import { MODE_LABEL, MP_MODE_IDS, nextMode, type ModeId } from './modes';
 import { clamp, rad } from './sim/math';
 import { createSim } from './sim/sim';
 import type { SimInput } from './sim/types';
@@ -13,6 +13,7 @@ import { createCanvasRenderer } from './render/canvas2d/renderer';
 import { createThreeRenderer } from './render/three/renderer';
 import { loadPlayerModel, MODEL } from './render/three/model';
 import type { FieldRenderer, ViewState } from './render/types';
+import { createHelp } from './ui/help';
 import { updateFloaters, updateHud } from './ui/hud';
 import { createLobby } from './ui/lobby';
 import { createPanel, toast } from './ui/panel';
@@ -41,10 +42,15 @@ const panel = createPanel({
   sim,
   getRenderer: () => renderer,
   setRenderer,
-  netActive: () => {
+  inRoom: () => {
     const phase = session?.phase;
     return phase === 'lobby' || phase === 'play' || phase === 'ended';
   },
+  isClient: () => !!session && session.role === 'client' && session.phase !== 'idle',
+  isHostRoom: () => !!session && session.role === 'host' && (session.phase === 'lobby' || session.phase === 'play'),
+  roomPhase: () => session?.phase ?? 'idle',
+  onHostSettings: () => session?.pushSettings(),
+  onLobbyMode: (m) => session?.setMode(m),
 });
 const { gui, sandbox } = panel;
 
@@ -59,12 +65,12 @@ const input = createInput(S, viewEl);
 const cam = { x: FIELD_W / 2, y: LOS_Y + 3, ext: DEFAULTS.cameraMinExtent };
 let acc = 0;
 let last = performance.now();
+const help = createHelp(must('help'), must('controls-pill'));
 const hud = {
   stats: must('stats'),
   fb: must('feedback'),
   pad: must('padnote'),
   power: must('power'),
-  help: must('help'),
 };
 const promptEl = must('prompt');
 const floatEl = must('floaters');
@@ -89,7 +95,12 @@ function frame(now: number) {
     carry = null;
   }
   const online = session.phase === 'play';
-  if (!online && meta.mode) panel.setMode(nextMode(st.mode));
+  if (meta.mode && session.role !== 'client') {
+    let m = nextMode(st.mode);
+    const inRoom = session.phase === 'lobby' || session.phase === 'play';
+    if (inRoom) while (!(MP_MODE_IDS as readonly ModeId[]).includes(m)) m = nextMode(m);
+    panel.setMode(m);
+  }
   sandbox.controlling = st.controlled.toUpperCase();
   if (!online && st.mode === 'catch' && meta.start && st.cm?.phase !== 'carry') {
     S.catchPaused = !S.catchPaused;
@@ -115,7 +126,18 @@ function frame(now: number) {
     panel.refresh();
     saveSettings(browserStore(), S);
   }
-  if (meta.toggleHelp) hud.help.classList.toggle('hidden');
+  if (meta.toggleHelp) help.toggle();
+  if (meta.toggleGui) {
+    if (gui.domElement.classList.contains('lil-closed')) gui.open();
+    else gui.close();
+  }
+  const shown = session.phase === 'lobby' ? session.mode : st.mode;
+  help.setMode(shown);
+  if (session.role === 'client' && session.phase !== 'idle') {
+    const label = MODE_LABEL[shown];
+    if (sandbox.mode !== label) sandbox.mode = label;
+    if (session.phase === 'play' && sandbox.route !== st.route) sandbox.route = st.route;
+  }
   if (meta.posePreview) sandbox.posePreview = !sandbox.posePreview;
 
   const thrower = localThrower();
@@ -266,7 +288,15 @@ window.__sandbox = {
 };
 
 let lobby: ReturnType<typeof createLobby>;
-session = createSession({ sim, S, onChange: () => lobby.update() });
+session = createSession({
+  sim,
+  S,
+  onChange: () => {
+    lobby.update();
+    panel.syncLock();
+    panel.refresh();
+  },
+});
 lobby = createLobby({ session });
 window.__net = {
   setInput(partial) { window.__netInput = partial; },

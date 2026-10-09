@@ -1,0 +1,155 @@
+import type { ModeId } from '../modes';
+import { MODE_LABEL } from '../modes';
+
+const SEEN_KEY = 'tdfb.sandbox.help.seen';
+const OPEN_KEY = 'tdfb.sandbox.help.open';
+
+type SectionId = 'everyone' | 'qb' | 'receiver' | 'carrier' | 'defender';
+
+const MODE_SECTIONS: Record<ModeId, SectionId[]> = {
+  throw: ['everyone', 'qb', 'receiver', 'carrier'],
+  coverage: ['everyone', 'defender', 'receiver', 'carrier'],
+  run: ['everyone', 'carrier', 'defender'],
+  catch: ['everyone', 'receiver', 'carrier'],
+  free: ['everyone', 'qb', 'receiver'],
+};
+
+const A = pad('a', 'A');
+const B = pad('b', 'B');
+const X = pad('x', 'X');
+const Y = pad('y', 'Y');
+const LB = pad('lb', 'LB');
+const RB = pad('rb', 'RB');
+const LT = pad('lt', 'LT');
+const RT = pad('rt', 'RT');
+const LS = pad('stick', 'LS');
+const RS = pad('stick', 'RS');
+const L3 = pad('l3', 'L3');
+const BACK = pad('back', 'Back');
+const START = pad('start', 'Start');
+
+function pad(kind: string, label: string): string {
+  return `<i class="pad ${kind}">${label}</i>`;
+}
+
+function key(label: string): string {
+  return `<kbd>${label}</kbd>`;
+}
+
+function row(act: string, detail: string): string {
+  return `<div class="help-row"><div class="help-act">${act}</div><div class="help-detail">${detail}</div></div>`;
+}
+
+function section(id: SectionId, title: string, rows: string): string {
+  return `<section class="help-sec" data-sec="${id}"><h5>${title}</h5>${rows}</section>`;
+}
+
+const BODY = [
+  section('everyone', 'Everyone', [
+    row(`${LS} ${key('W')}${key('A')}${key('S')}${key('D')}`, 'Move. A little tilt jogs, full tilt runs. Hold C to jog.'),
+    row(`${L3} ${key('Shift')}`, 'Sprint pump. Each click adds speed, then it fades. Cuts dump it faster.'),
+    row(`${A} ${key('Space')}`, 'Snap, before the play is live.'),
+    row(`${BACK} ${key('Tab')}`, 'Switch the player you control.'),
+    row(`${START} ${key('R')}`, 'Reset the play. In Catch, Start pauses throws. Hold Start, or Back+Start, to hide this card.'),
+    row(`${key('H')} ${key('G')}`, 'Hide this card. G hides the settings panel. ` shows the net readout.'),
+    row(`${key('N')} ${key('M')}`, 'Next mode (D-pad up). M swaps 3D and the flat field. Wheel zooms.'),
+  ].join('')),
+  section('qb', 'Quarterback', [
+    row(`${RS} ${key('Mouse')}`, 'Aim the spot. Hold the throw, then let go.'),
+    row(`${RT} ${key('F')}`, 'Throw. Soft is a loft, hard is a bullet.'),
+    row(`${LB} ${RB} ×2`, `Pitch left or right. Flick ${RS} to aim it.`),
+  ].join('')),
+  section('receiver', 'Receiver', [
+    row(`${Y} ${key('E')}`, 'Timed catch. Before the throw, the same button calls for the ball.'),
+    row(`${RT} ${key('F')}`, 'One-hand catch.'),
+    row(`${RB} ${key('V')}`, 'Tap to plant. Hold to stretch into a toe-tap.'),
+    row(`${A} ${X} ${B}`, 'Jump, dive, or bat the ball.'),
+    row(`${LT} ${key('Q')}`, 'Square up for a two-hand catch.'),
+  ].join('')),
+  section('carrier', 'Ball carrier', [
+    row(`${RS} ${key('Arrows')}`, 'Flick with your run: sideways sidesteps, up trucks, down jukes, diagonals spin.'),
+    row(`${A} ${X}`, 'Hurdle, or dive forward.'),
+    row(`${LB} ${RB}`, 'Tap to switch hands. Hold to stiff-arm. Double-tap to pitch.'),
+  ].join('')),
+  section('defender', 'Defender', [
+    row(`${LT} ${key('Q')}`, 'Break down and square up.'),
+    row(`${A} ${X}`, 'Wrap tackle, or a longer diving tackle.'),
+    row(`${Y} ${B}`, 'Play the ball: interception or punch, or bat it down.'),
+    row(`${LB} ${key('Z')}`, 'Arm-check in coverage. Hold it too long and the play flags holding.'),
+  ].join('')),
+].join('');
+
+function readOpen(): boolean {
+  try {
+    if (!localStorage.getItem(SEEN_KEY)) {
+      localStorage.setItem(SEEN_KEY, '1');
+      return true;
+    }
+    return localStorage.getItem(OPEN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeOpen(open: boolean) {
+  try { localStorage.setItem(OPEN_KEY, open ? '1' : '0'); } catch { /* private mode */ }
+}
+
+export function createHelp(root: HTMLElement, pill: HTMLElement) {
+  let mode: ModeId = 'throw';
+  let open = readOpen();
+  let showAll = false;
+  root.classList.add('help-card');
+  root.innerHTML = `
+    <div class="help-head">
+      <strong>Controls</strong>
+      <span class="help-mode"></span>
+      <button type="button" class="help-all">Show all</button>
+      <button type="button" class="help-hide">Hide</button>
+    </div>
+    <div class="help-body">${BODY}</div>`;
+  const modeEl = root.querySelector('.help-mode') as HTMLElement;
+  const allBtn = root.querySelector('.help-all') as HTMLButtonElement;
+  root.querySelector('.help-hide')?.addEventListener('click', () => setOpen(false));
+  allBtn.addEventListener('click', () => {
+    showAll = !showAll;
+    allBtn.textContent = showAll ? 'This mode' : 'Show all';
+    applySections();
+  });
+  pill.addEventListener('click', () => setOpen(true));
+
+  function applySections() {
+    const show = new Set<SectionId>(showAll
+      ? ['everyone', 'qb', 'receiver', 'carrier', 'defender']
+      : MODE_SECTIONS[mode]);
+    root.querySelectorAll<HTMLElement>('.help-sec').forEach((el) => {
+      const id = el.dataset.sec as SectionId;
+      el.classList.toggle('is-off', !show.has(id));
+    });
+    modeEl.textContent = showAll ? 'All roles' : MODE_LABEL[mode];
+  }
+
+  function paint() {
+    root.classList.toggle('hidden', !open);
+    pill.classList.toggle('hidden', open);
+    applySections();
+  }
+
+  function setOpen(next: boolean) {
+    if (next === open) return;
+    open = next;
+    writeOpen(open);
+    paint();
+  }
+
+  paint();
+  return {
+    toggle() { setOpen(!open); },
+    setMode(next: ModeId) {
+      if (next === mode) return;
+      mode = next;
+      applySections();
+    },
+    isOpen: () => open,
+  };
+}

@@ -11,6 +11,7 @@ export interface InputMeta {
   route: string | null;
   toggleRenderer: boolean;
   toggleHelp: boolean;
+  toggleGui: boolean;
   mode: boolean;
   posePreview: boolean;
 }
@@ -65,6 +66,11 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
   view.addEventListener('contextmenu', (e) => e.preventDefault());
   let fDownT = 0;
   let arrowT = 0;
+  let backAt = 0;
+  let backSent = false;
+  let startAt = 0;
+  let startLong = false;
+  let chordSent = false;
   function getPad(): Gamepad | null {
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     for (const p of pads) if (p && p.connected) return p;
@@ -77,7 +83,7 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
     mouse,
     poll() {
       const inp = blankInput() as PolledInput;
-      const meta: InputMeta = { switch: false, reset: false, start: false, routeDelta: 0, route: null, toggleRenderer: false, toggleHelp: false, mode: false, posePreview: false };
+      const meta: InputMeta = { switch: false, reset: false, start: false, routeDelta: 0, route: null, toggleRenderer: false, toggleHelp: false, toggleGui: false, mode: false, posePreview: false };
       const pad = getPad();
       let padMove: { x: number; y: number } | null = null;
       if (pad) {
@@ -106,8 +112,39 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
             if (rt < 0.06 || rt < rtPeak - 0.25 || rtPeak >= 0.99) { inp.throwPower = inp.charge; rtCharging = false; rtLock = true; }
           }
         }
-        if (E(8)) meta.switch = true;
-        if (E(9)) meta.start = true;
+        const nowMs = performance.now();
+        const back = B(8);
+        const startBtn = B(9);
+        if (back && startBtn) {
+          if (!chordSent) {
+            meta.toggleHelp = true;
+            chordSent = true;
+            backSent = true;
+            startLong = true;
+          }
+        } else if (!back && !startBtn) chordSent = false;
+        if (startBtn) {
+          if (!startAt) startAt = nowMs;
+          if (!startLong && !chordSent && nowMs - startAt >= 600) {
+            meta.toggleHelp = true;
+            startLong = true;
+          }
+        } else {
+          if (startAt && !startLong && !chordSent) meta.start = true;
+          startAt = 0;
+          startLong = false;
+        }
+        if (back) {
+          if (!backAt) backAt = nowMs;
+          if (!backSent && !chordSent && !startBtn && nowMs - backAt >= 180) {
+            meta.switch = true;
+            backSent = true;
+          }
+        } else {
+          if (backAt && !backSent && !chordSent) meta.switch = true;
+          backAt = 0;
+          backSent = false;
+        }
         if (E(15)) meta.routeDelta = 1;
         if (E(14)) meta.routeDelta = -1;
         if (E(12)) meta.mode = true;
@@ -146,6 +183,7 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
       ROUTES.forEach((name, i) => { if (i < 9 && e(`Digit${i + 1}`)) meta.route = name; });
       if (e('KeyM')) meta.toggleRenderer = true;
       if (e('KeyH')) meta.toggleHelp = true;
+      if (e('KeyG')) meta.toggleGui = true;
       if (e('KeyN')) meta.mode = true;
       if (e('KeyP')) meta.posePreview = true;
       inp.lbHeld = !!inp.lbHeld || keys.has('KeyZ') || e('KeyZ');

@@ -54,6 +54,8 @@ export interface NetSession {
   leave(): void;
   tick(dt: number, local: SimInput | null): void;
   toggleStats(): void;
+  /** Host only. Broadcasts gameplay tuning. Local keys are left out. */
+  pushSettings(): void;
 }
 
 export function createSession(opts: { sim: Sim; S: Settings; onChange: () => void }): NetSession {
@@ -312,6 +314,16 @@ export function createSession(opts: { sim: Sim; S: Settings; onChange: () => voi
       seats.splice(0, seats.length, ...msg.players.map((s) => ({ ...s })));
       const mine = seatByPeer(myPeerId());
       mySlot = mine?.slot || mySlot;
+      if (st.mode !== msg.mode) sim.setMode(msg.mode);
+      emit();
+      return;
+    }
+    if (msg.t === 'settings') {
+      applyGameplay(S, msg.settings);
+      if ((MP_MODE_IDS as readonly ModeId[]).includes(msg.mode)) {
+        mode = msg.mode;
+        if (st.mode !== msg.mode) sim.setMode(msg.mode);
+      }
       emit();
       return;
     }
@@ -626,6 +638,11 @@ export function createSession(opts: { sim: Sim; S: Settings; onChange: () => voi
       if (tickAcc > TICK) tickAcc = 0;
     },
     toggleStats() { showStats = !showStats; emit(); },
+    pushSettings() {
+      if (role !== 'host' || (phase !== 'lobby' && phase !== 'play')) return;
+      if (phase === 'play') mode = st.mode;
+      broadcast({ t: 'settings', settings: gameplaySettings(S), mode: phase === 'play' ? st.mode : mode });
+    },
   };
   return api;
 }

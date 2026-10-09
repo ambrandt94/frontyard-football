@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULTS } from './defaults';
+import { HOST_KEYS, LOCAL_KEYS } from './groups';
 import {
   countRecognized,
   deletePreset,
@@ -53,7 +54,12 @@ describe('settings schema', () => {
     saveSettings(store, custom);
     expect(loadSettings(store).accel).toBe(18);
     expect(loadSettings(store).catchPaused).toBe(true);
-    expect(JSON.parse(store.data['tdfb.sandbox.settings.v1']).schemaVersion).toBe(5);
+    const saved = JSON.parse(store.data['tdfb.sandbox.settings.v1']);
+    expect(saved.schemaVersion).toBe(6);
+    expect(saved.host.accel).toBe(18);
+    expect(saved.host.deadzone).toBeUndefined();
+    expect(saved.local.deadzone).toBe(DEFAULTS.deadzone);
+    expect(saved.local.accel).toBeUndefined();
 
     let presets = emptyPresetStore();
     presets = upsertPreset(presets, 'Deep balls', custom);
@@ -65,6 +71,27 @@ describe('settings schema', () => {
     expect(presetSettings(loaded, 'Deep balls')?.jogSpeed).toBe(DEFAULTS.jogSpeed);
     const remaining = deletePreset(loaded, 'Arcade');
     expect(presetSettings(remaining, 'Arcade')).toBeNull();
-    expect(toDocument(custom).schemaVersion).toBe(5);
+    expect(toDocument(custom).schemaVersion).toBe(6);
+  });
+
+  it('reads schema 5 values bags and schema 6 host/local bags', () => {
+    const from5 = mergeSettings({ schemaVersion: 5, values: { accel: 42, deadzone: 0.3 } });
+    expect(from5.accel).toBe(42);
+    expect(from5.deadzone).toBe(0.3);
+    const from6 = mergeSettings({ schemaVersion: 6, host: { accel: 17 }, local: { deadzone: 0.4, renderer: 'canvas2d' } });
+    expect(from6.accel).toBe(17);
+    expect(from6.deadzone).toBe(0.4);
+    expect(from6.renderer).toBe('canvas2d');
+    expect(from6.fullSpeed).toBe(DEFAULTS.fullSpeed);
+  });
+
+  it('puts every setting in exactly one group', () => {
+    const all = Object.keys(DEFAULTS).sort();
+    const union = [...HOST_KEYS, ...LOCAL_KEYS].sort();
+    expect(union).toEqual(all);
+    const local = new Set<string>(LOCAL_KEYS);
+    for (const key of HOST_KEYS) expect(local.has(key)).toBe(false);
+    expect(local.has('deadzone')).toBe(true);
+    expect(local.has('accel')).toBe(false);
   });
 });

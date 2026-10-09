@@ -34,7 +34,7 @@ Cycle with **N** or **D-pad up**, or the Mode dropdown.
 
 ## Controls
 
-H hides the on-screen card. A controller with the standard mapping is preferred; keyboard and mouse cover the same actions.
+The controls card is a small overlay. The first visit shows it; after that it starts hidden, and a **? Controls (H)** pill in the corner opens it again. **H** hides or shows it. On a controller, hold **Start** or press **Back+Start**. **G** hides the settings panel. The card lists the roles for the mode you are in, with **Show all** for the rest. A controller with the standard mapping is preferred; keyboard and mouse cover the same actions.
 
 ### Gamepad
 
@@ -74,7 +74,8 @@ H hides the on-screen card. A controller with the standard mapping is preferred;
 | M | Toggle 3D and the 2D canvas renderer. |
 | N | Next mode. |
 | P | Pose preview sheet (3D). |
-| H | Hide or show the control card. |
+| H | Hide or show the control card. The choice is remembered. |
+| G | Hide or show the settings panel. |
 
 1v1 carrier moves on the keyboard follow the right-stick table: arrows relative to your run (up = truck, down = juke, left/right = sidestep, down+left or down+right = spin). Z and V tap to switch hands, hold to stiff-arm, double-tap to pitch.
 
@@ -89,10 +90,10 @@ The **Sandbox settings** panel (lil-gui) is the live tuning UI. Every change is 
 Settings are a versioned document:
 
 ```json
-{ "schemaVersion": 5, "values": { "accel": 30 } }
+{ "schemaVersion": 6, "host": { "accel": 30 }, "local": { "deadzone": 0.15 } }
 ```
 
-On load, unknown keys are ignored and missing keys are filled from the defaults, including older flat saves from the original one-file prototype. A newer `schemaVersion` still merges the keys this build knows.
+`host` is gameplay and physics (movement, sprint, throws, catching, carrier moves, tackling, AI, and the mode toggles). `local` stays on this machine: camera, renderer, player model, stick deadzone, and the TURN login. On load, unknown keys are ignored and missing keys are filled from the defaults. Older flat saves and schema 5 `{ "values": { ... } }` documents still load. A newer `schemaVersion` still merges the keys this build knows.
 
 The **Presets** folder adds:
 
@@ -120,7 +121,7 @@ AI players, including the receiver, pump about **10 times a second** (every 0.1s
 ## Project layout
 
 ```
-index.html                 page shell and the control card
+index.html                 page shell
 src/main.ts                fixed-timestep loop, camera, wiring
 src/config/                constants, default tuning, settings schema + presets
 src/sim/                   simulation only — no DOM, no Three.js
@@ -152,7 +153,9 @@ The host picks the mode and hits **Start**. Each person picks a slot. Empty slot
 
 This is peer-to-peer. The host's browser runs `src/sim`. Everyone else sends their stick, triggers, and buttons. The host steps at 60 Hz (two of the usual 1/120 sim steps, so the physics match solo play) and broadcasts snapshots at 20 Hz. Clients **interpolate** those snapshots. They do not predict their own player. You are looking about a tenth of a second behind the host, plus half the ping. The host is watching the live sim, so the host has less delay. That is the host advantage.
 
-Signaling uses the public [PeerJS](https://peerjs.com/) broker (`0.peerjs.com`). There is no account and no server of ours. Google's public STUN server is included. A strict NAT can still fail to connect until someone puts a TURN server in **Online / TURN** in the settings panel (`netTurnUrl`, `netTurnUser`, `netTurnCred`). Those fields start empty. Gameplay tuning is copied from the host when you join, so the physics match. Camera, player scale, and the TURN login stay on your machine.
+Signaling uses the public [PeerJS](https://peerjs.com/) broker (`0.peerjs.com`). There is no account and no server of ours. Google's public STUN server is included. A strict NAT can still fail to connect until someone puts a TURN server in **Online / TURN** in the settings panel (`netTurnUrl`, `netTurnUser`, `netTurnCred`). Those fields start empty.
+
+In a room, only the host can change gameplay, physics, and the mode. Moving a slider, picking a built-in or saved preset, or changing the mode is sent to everyone as it happens. Clients see those folders locked, with a **Host controls this** note. Each player still edits their own camera, 2D/3D renderer, model or capsule, outline, player scale, stick deadzone, and the HUD and net overlay. Solo play leaves every control editable.
 
 If a player drops, their slot goes back to AI and they can rejoin the same code. A closed tab is treated as gone after a few seconds without a reply. If the host leaves, the room ends and everyone sees that message. The host tab has to stay open and in the foreground. Browsers slow a background tab down, and that stalls the sim for everyone.
 

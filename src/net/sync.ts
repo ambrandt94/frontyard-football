@@ -1,30 +1,18 @@
-import { DEFAULTS, isSettingsKey, settingAccepts, type Settings } from '../config/defaults';
+import { isSettingsKey, settingAccepts, type Settings } from '../config/defaults';
+import { isHostKey, pickHost } from '../config/groups';
 import type { IceServer } from './types';
 
-/** View and this machine's TURN login stay local. Gameplay numbers come from the host. */
-const LOCAL_KEYS: (keyof Settings)[] = [
-  'cameraMinExtent', 'cameraPadding', 'cameraFollow', 'playerScale', 'playerVisuals',
-  'modelHeightYd', 'modelOutline', 'showReach', 'showArc', 'renderer',
-  'netTurnUrl', 'netTurnUser', 'netTurnCred',
-];
-
+/** Host-owned gameplay. Camera, input feel, renderer, and TURN stay off this object. */
 export function gameplaySettings(S: Settings): Partial<Settings> {
-  const out: Partial<Settings> = {};
-  for (const key of Object.keys(DEFAULTS) as (keyof Settings)[]) {
-    if (LOCAL_KEYS.includes(key)) continue;
-    (out as Record<string, unknown>)[key] = S[key];
-  }
-  return out;
+  return pickHost(S);
 }
 
 export function applyGameplay(S: Settings, incoming: Partial<Settings>) {
-  const next: Partial<Settings> = {};
   for (const key of Object.keys(incoming) as (keyof Settings)[]) {
-    if (LOCAL_KEYS.includes(key) || !isSettingsKey(key)) continue;
+    if (!isSettingsKey(key) || !isHostKey(key)) continue;
     const value = incoming[key];
-    if (settingAccepts(key, value)) (next as Record<string, unknown>)[key] = value;
+    if (settingAccepts(key, value)) (S as unknown as Record<keyof Settings, Settings[keyof Settings]>)[key] = value as Settings[keyof Settings];
   }
-  Object.assign(S, next);
 }
 
 export function iceServers(S: Pick<Settings, 'netTurnUrl' | 'netTurnUser' | 'netTurnCred'>): IceServer[] {

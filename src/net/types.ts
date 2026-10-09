@@ -98,6 +98,7 @@ export interface NetMsgMap {
   'host-gone': { t: 'host-gone' };
   full: { t: 'full' };
   reject: { t: 'reject'; reason: string };
+  settings: { t: 'settings'; settings: Partial<Settings>; mode: ModeId };
 }
 
 export type NetMsg = NetMsgMap[keyof NetMsgMap];

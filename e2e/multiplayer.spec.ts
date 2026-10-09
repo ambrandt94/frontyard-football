@@ -100,6 +100,59 @@ test('host and two clients play a pass, then a disconnect falls back to AI', asy
   }
 });
 
+test('a client cannot change host tuning, and a host change arrives', async ({ browser }) => {
+  const host = await open(browser);
+  const guest = await open(browser);
+  try {
+    await host.page.click('#net-open');
+    await host.page.fill('#net-name', 'Host');
+    await host.page.click('#net-host');
+    await expect(host.page.locator('#net-code-label')).toHaveText(/^[A-Z2-9]{4}$/);
+    const code = (await host.page.locator('#net-code-label').innerText()).trim();
+    await join(guest.page, code, 'Guest');
+    await expect.poll(() => host.page.evaluate(() => window.__net!.session.players.some((p) => p.name === 'Guest'))).toBe(true);
+    await expect.poll(() => guest.page.evaluate(() => window.__net!.session.status)).toContain('Connected');
+
+    await expect(guest.page.locator('.host-lock-note')).toHaveText('Host controls this');
+    await expect.poll(() => guest.page.evaluate(() => {
+      const accel = [...document.querySelectorAll('.lil-controller')].find((el) => el.textContent?.includes('accel (yd/s'));
+      const dead = [...document.querySelectorAll('.lil-controller')].find((el) => el.textContent?.includes('deadzone'));
+      return !!accel?.classList.contains('lil-disabled') && !!dead && !dead.classList.contains('lil-disabled');
+    })).toBe(true);
+
+    const before = await host.page.evaluate(() => window.__sandbox.S.accel);
+    await guest.page.evaluate(() => {
+      window.__sandbox.S.accel = 99;
+      window.__net!.session.pushSettings();
+    });
+    await host.page.waitForTimeout(200);
+    expect(await host.page.evaluate(() => window.__sandbox.S.accel)).toBe(before);
+
+    await host.page.evaluate(() => {
+      window.__sandbox.S.accel = 21;
+      window.__sandbox.S.deadzone = 0.42;
+      window.__net!.session.pushSettings();
+    });
+    await expect.poll(() => guest.page.evaluate(() => window.__sandbox.S.accel)).toBe(21);
+    expect(await guest.page.evaluate(() => window.__sandbox.S.deadzone)).toBe(0.15);
+    await guest.page.evaluate(() => { window.__sandbox.S.deadzone = 0.33; });
+    expect(await host.page.evaluate(() => window.__sandbox.S.deadzone)).toBe(0.42);
+
+    await host.page.evaluate(() => {
+      window.__sandbox.applyControlPreset('Arcade Snappy');
+      window.__net!.session.pushSettings();
+    });
+    await expect.poll(() => guest.page.evaluate(() => window.__sandbox.S.accel)).toBe(72);
+    expect(await guest.page.evaluate(() => window.__sandbox.S.deadzone)).toBe(0.33);
+
+    const noise = [...host.errors, ...guest.errors].filter(isRealError);
+    expect(noise, noise.join('\n')).toEqual([]);
+  } finally {
+    await guest.ctx.close().catch(() => undefined);
+    await host.ctx.close().catch(() => undefined);
+  }
+});
+
 async function join(page: Page, code: string, name: string) {
   await page.click('#net-open');
   await page.fill('#net-name', name);
@@ -139,15 +192,17 @@ declare global {
         phase: string;
         roomCode: string;
         players: { name: string; slot: string; peerId: string }[];
+        pushSettings(): void;
       };
     };
     __sandbox: {
       state: {
-        play: { phase: string };
+        play: { phase: string; t0: number };
         ball: { holder: string | null; state: string };
         players: Record<string, { x: number; y: number }>;
       };
-      S: Record<string, unknown>;
+      S: Record<string, number | string | boolean>;
+      applyControlPreset(name: string): void;
     };
   }
 }

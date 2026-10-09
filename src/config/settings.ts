@@ -1,10 +1,12 @@
 import { PRESETS_KEY, SETTINGS_KEY, SETTINGS_SCHEMA_VERSION } from './constants';
 import { DEFAULTS, isSettingsKey, settingAccepts, type Settings } from './defaults';
+import { isLocalKey, pickHost, pickLocal } from './groups';
 
-/** Canonical on-disk / clipboard shape. Unknown keys are ignored on load. */
+/** Canonical on-disk / clipboard shape. `host` syncs in a room. `local` stays on this machine. */
 export interface SettingsDocument {
   schemaVersion: number;
-  values: Partial<Settings>;
+  host: Partial<Settings>;
+  local: Partial<Settings>;
 }
 
 export interface PresetStore {
@@ -22,7 +24,7 @@ export function emptyPresetStore(): PresetStore {
 }
 
 export function toDocument(settings: Settings): SettingsDocument {
-  return { schemaVersion: SETTINGS_SCHEMA_VERSION, values: { ...settings } };
+  return { schemaVersion: SETTINGS_SCHEMA_VERSION, host: pickHost(settings), local: pickLocal(settings) };
 }
 
 function asRecord(raw: unknown): Record<string, unknown> | null {
@@ -30,15 +32,30 @@ function asRecord(raw: unknown): Record<string, unknown> | null {
   return raw as Record<string, unknown>;
 }
 
-/** Pull a values bag out of a versioned document or a legacy flat object. */
+/** Pull keys out of a host/local document, a schema 5 `{ values }` bag, or a legacy flat object. */
 export function extractValues(raw: unknown): Record<string, unknown> | null {
   const obj = asRecord(raw);
   if (!obj) return null;
+  if ('host' in obj || 'local' in obj) {
+    return { ...(asRecord(obj.host) ?? {}), ...(asRecord(obj.local) ?? {}) };
+  }
   if ('values' in obj) {
     const values = asRecord(obj.values);
     return values ?? {};
   }
   return obj;
+}
+
+function splitRecognized(raw: unknown): { host: Partial<Settings>; local: Partial<Settings> } {
+  const values = extractValues(raw) ?? {};
+  const host: Partial<Settings> = {};
+  const local: Partial<Settings> = {};
+  for (const key of Object.keys(values)) {
+    if (!isSettingsKey(key) || !settingAccepts(key, values[key])) continue;
+    const bag = isLocalKey(key) ? local : host;
+    (bag as Record<string, unknown>)[key] = values[key];
+  }
+  return { host, local };
 }
 
 export function countRecognized(raw: unknown): number {
@@ -94,17 +111,12 @@ export function loadPresetStore(store: KeyValueStore): PresetStore {
       for (const name of Object.keys(presetsIn)) {
         const doc = presetsIn[name];
         if (countRecognized(doc) > 0) {
-          const values = extractValues(doc) ?? {};
-          const partial: Partial<Settings> = {};
-          for (const key of Object.keys(values)) {
-            if (isSettingsKey(key) && settingAccepts(key, values[key])) {
-              (partial as Record<string, unknown>)[key] = values[key];
-            }
-          }
+          const split = splitRecognized(doc);
           const version = asRecord(doc)?.schemaVersion;
           presets[name] = {
             schemaVersion: typeof version === 'number' ? version : SETTINGS_SCHEMA_VERSION,
-            values: partial,
+            host: split.host,
+            local: split.local,
           };
         }
       }

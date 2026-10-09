@@ -16,8 +16,9 @@ import {
   upsertPreset,
   type PresetStore,
 } from '../config/settings';
+import { assignKeys, HOST_KEYS, isHostKey, LOCAL_KEYS } from '../config/groups';
 import { applyControlPreset, builtinPreset, BUILTIN_PRESETS } from '../config/presets';
-import { MODE_LABEL, MODE_LABELS, modeFromLabel, type ModeId } from '../modes';
+import { MODE_LABEL, MODE_LABELS, modeFromLabel, MP_MODE_IDS, type ModeId } from '../modes';
 import type { Sim } from '../sim/sim';
 import type { FieldRenderer } from '../render/types';
 
@@ -53,7 +54,12 @@ export function createPanel(opts: {
   sim: Sim;
   getRenderer: () => FieldRenderer;
   setRenderer: (name: 'three' | 'canvas2d') => void;
-  netActive?: () => boolean;
+  inRoom?: () => boolean;
+  isClient?: () => boolean;
+  isHostRoom?: () => boolean;
+  roomPhase?: () => 'idle' | 'lobby' | 'play' | 'ended';
+  onHostSettings?: () => void;
+  onLobbyMode?: (mode: ModeId) => void;
 }) {
   const { S, sim } = opts;
   const st = sim.state;
@@ -65,21 +71,39 @@ export function createPanel(opts: {
   fileInput.hidden = true;
   document.body.appendChild(fileInput);
 
-  const netLocked = () => !!opts.netActive?.();
+  const inRoom = () => !!opts.inRoom?.();
+  const clientLocked = () => !!opts.isClient?.();
+  const hosting = () => !!opts.isHostRoom?.();
+  let pushTimer = 0;
+  function schedulePush() {
+    if (!hosting()) return;
+    window.clearTimeout(pushTimer);
+    pushTimer = window.setTimeout(() => opts.onHostSettings?.(), 40);
+  }
   const sandbox: SandboxUi = {
     posePreview: false,
     route: st.route,
     controlling: 'QB',
     mode: 'Throw',
     preset: '',
-    reset: () => { if (netLocked()) { toast('The host is running this match'); return; } sim.reset(); },
+    reset: () => { if (inRoom()) { toast('The host is running this match'); return; } sim.reset(); },
     switchPlayer: () => switchControl(),
     resetDefaults: () => {
-      Object.assign(S, DEFAULTS);
+      if (clientLocked()) {
+        assignKeys(S, DEFAULTS, LOCAL_KEYS);
+        toast('Local settings reset. Host controls this.');
+      } else if (hosting()) {
+        assignKeys(S, DEFAULTS, HOST_KEYS);
+        assignKeys(S, DEFAULTS, LOCAL_KEYS);
+        opts.onHostSettings?.();
+        toast('Settings reset and sent to the room');
+      } else {
+        Object.assign(S, DEFAULTS);
+        toast('Settings reset to defaults');
+      }
       saveSettings(store, S);
       refresh();
       if (opts.getRenderer().name !== S.renderer) opts.setRenderer(S.renderer);
-      toast('Settings reset to defaults');
     },
     copyJSON: async () => {
       const txt = JSON.stringify(toDocument(S), null, 2);
@@ -137,35 +161,61 @@ export function createPanel(opts: {
   });
 
   function applySettings(next: Settings) {
-    Object.assign(S, next);
+    if (clientLocked()) {
+      assignKeys(S, next, LOCAL_KEYS);
+      toast('Host controls this. Local view settings imported.');
+    } else if (hosting()) {
+      assignKeys(S, next, HOST_KEYS);
+      assignKeys(S, next, LOCAL_KEYS);
+      opts.onHostSettings?.();
+    } else {
+      Object.assign(S, next);
+    }
     saveSettings(store, S);
     refresh();
     if (opts.getRenderer().name !== S.renderer) opts.setRenderer(S.renderer);
   }
 
   function switchControl() {
-    if (netLocked()) { toast('Slots are picked in the online lobby'); return; }
+    if (inRoom()) { toast('Slots are picked in the online lobby'); return; }
     if (!sim.switchControl()) { toast('Catch mode: you are always the receiver'); return; }
     sandbox.controlling = st.controlled.toUpperCase();
   }
   function setMode(m: ModeId) {
-    if (netLocked()) return;
+    if (clientLocked()) {
+      toast('Host controls this');
+      sandbox.mode = MODE_LABEL[st.mode];
+      return;
+    }
+    const phase = opts.roomPhase?.() ?? 'idle';
+    if ((phase === 'lobby' || phase === 'play') && !(MP_MODE_IDS as readonly string[]).includes(m)) {
+      toast('Catch stays single-player');
+      sandbox.mode = MODE_LABEL[st.mode];
+      return;
+    }
     sim.setMode(m);
     sandbox.mode = MODE_LABEL[m];
     sandbox.controlling = st.controlled.toUpperCase();
+    if (phase === 'lobby') opts.onLobbyMode?.(m);
+    else if (phase === 'play') opts.onHostSettings?.();
   }
 
   const gui = new GUI({ title: 'Sandbox settings' });
   const fp = gui.addFolder('Play');
   fp.add(sandbox, 'mode', MODE_LABELS).name('Mode (N / D-pad ▲)').onChange((v: string) => setMode(modeFromLabel(v))).listen();
   fp.add(S, 'requireSnap').name('Require snap (A / Space)');
-  fp.add(sandbox, 'route', [...ROUTES]).name('WR route (AI)').onChange((v: string) => { if (netLocked()) return; st.route = v; sim.reset(true); }).listen();
+  fp.add(sandbox, 'route', [...ROUTES]).name('WR route (AI)').onChange((v: string) => {
+    if (clientLocked()) { sandbox.route = st.route; return; }
+    st.route = v;
+    sim.reset(true);
+  }).listen();
   fp.add(sandbox, 'controlling').name('Controlling').listen().disable();
   fp.add(sandbox, 'switchPlayer').name('Switch control (Tab / Back)');
   fp.add(sandbox, 'reset').name('Reset play (R / Start)');
   fp.add(S, 'autoSwitchCarrier').name('Auto-switch to receiver after catch');
+  fp.add(S, 'autoReset').name('auto reset after play');
   fp.add(S, 'throwPursuer').name('Throw: pursuer after catch');
-  fp.add(S, 'throwDefender').name('Throw: add defender').onChange(() => { if (netLocked()) return; if (st.mode === 'throw') sim.reset(); });
+  fp.add(S, 'throwDefender').name('Throw: add defender').onChange(() => { if (clientLocked()) return; if (st.mode === 'throw') sim.reset(); });
 
   const fm = gui.addFolder('Movement');
   fm.add(S, 'accel', 5, 80, 0.5).name('accel (yd/s²)');
@@ -179,7 +229,6 @@ export function createPanel(opts: {
   fm.add(S, 'fullSpeed', 3, 12, 0.1).name('full speed (yd/s)');
   fm.add(S, 'sprintAccelMult', 0.1, 1.5, 0.01).name('accel/cut mult @ max boost');
   fm.add(S, 'ltSpeedCap', 1, 10, 0.1).name('LT speed cap (yd/s)');
-  fm.add(S, 'deadzone', 0, 0.5, 0.01).name('stick radial deadzone');
   fm.add(S, 'facingTurnRate', 2, 40, 0.5).name('facing turn rate');
 
   const fr = gui.addFolder('1v1 Run: carrier moves');
@@ -306,8 +355,8 @@ export function createPanel(opts: {
   fcm.close();
 
   const fcov = gui.addFolder('Coverage');
-  fcov.add(S, 'covAlign', ['off', 'press']).name('Alignment (press / off)').onChange(() => { if (netLocked()) return; if (st.mode === 'coverage' || S.throwDefender) sim.reset(); });
-  fcov.add(S, 'covShade', ['inside', 'outside']).name('Shade (inside / outside)').onChange(() => { if (netLocked()) return; if (st.mode === 'coverage' || S.throwDefender) sim.reset(); });
+  fcov.add(S, 'covAlign', ['off', 'press']).name('Alignment (press / off)').onChange(() => { if (clientLocked()) return; if (st.mode === 'coverage' || S.throwDefender) sim.reset(); });
+  fcov.add(S, 'covShade', ['inside', 'outside']).name('Shade (inside / outside)').onChange(() => { if (clientLocked()) return; if (st.mode === 'coverage' || S.throwDefender) sim.reset(); });
   fcov.add(S, 'covSep', 0.5, 8, 0.1).name('QB throws at separation (yd)');
   fcov.add(S, 'covMaxHold', 0.4, 5, 0.05).name('QB max hold (s)');
   fcov.add(S, 'covAccuracy', 0, 1, 0.01).name('QB accuracy');
@@ -359,6 +408,7 @@ export function createPanel(opts: {
   fn.add(S, 'netTurnUser').name('TURN username');
   fn.add(S, 'netTurnCred').name('TURN credential');
   const fv = gui.addFolder('View');
+  fv.add(S, 'deadzone', 0, 0.5, 0.01).name('stick radial deadzone');
   fv.add(S, 'cameraMinExtent', 15, 120, 1).name('camera zoom: min yards visible').listen();
   fv.add(S, 'cameraPadding', 0, 20, 0.5).name('framing padding (yd)');
   fv.add(S, 'playerScale', 0.8, 2, 0.05).name('player visual scale');
@@ -368,7 +418,6 @@ export function createPanel(opts: {
   fv.add(S, 'cameraFollow', 0.5, 12, 0.1).name('camera follow');
   fv.add(S, 'showReach').name('show WR reach ring');
   fv.add(S, 'showArc').name('show ball arc');
-  fv.add(S, 'autoReset').name('auto reset after play');
   fv.add(S, 'renderer', ['three', 'canvas2d']).name('renderer (M)').onChange((v: string) => opts.setRenderer(v === 'canvas2d' ? 'canvas2d' : 'three'));
 
   const fpre = gui.addFolder('Presets');
@@ -387,8 +436,16 @@ export function createPanel(opts: {
 
   gui.add(sandbox, 'resetDefaults').name('↺ Reset to defaults');
   gui.add(sandbox, 'copyJSON').name('⧉ Copy settings JSON');
+  const note = document.createElement('div');
+  note.className = 'host-lock-note';
+  note.textContent = 'Host controls this';
+  gui.domElement.prepend(note);
+  gui.onChange((event) => {
+    if (event.object === S && isHostKey(String(event.property))) schedulePush();
+  });
   gui.onFinishChange(() => saveSettings(store, S));
   [ft, fc, fv, fn].forEach((f) => f.close());
+  if (window.matchMedia('(max-width: 720px)').matches) gui.close();
 
   function refresh() { gui.controllersRecursive().forEach((c) => c.updateDisplay()); }
   function presetOptions() {
@@ -396,19 +453,28 @@ export function createPanel(opts: {
     return [...BUILTIN_PRESETS.map((p) => p.name), ...users];
   }
   function applyNamedPreset(name: string, toastIt: boolean) {
+    if (clientLocked()) { toast('Host controls this'); return; }
     const builtin = builtinPreset(name);
     if (builtin) {
       applyControlPreset(S, builtin);
       feel.line = builtin.description;
       saveSettings(store, S);
       refresh();
+      if (hosting()) opts.onHostSettings?.();
       if (toastIt) toast(builtin.name);
       return;
     }
     const next = presetSettings(presets, name);
     if (!next) { toast('No preset selected'); return; }
     feel.line = 'Saved preset';
-    applySettings(next);
+    if (hosting()) {
+      assignKeys(S, next, HOST_KEYS);
+      saveSettings(store, S);
+      refresh();
+      opts.onHostSettings?.();
+    } else {
+      applySettings(next);
+    }
     if (toastIt) toast(`Loaded "${name}"`);
   }
   function refreshPresetList(select?: string) {
@@ -426,5 +492,20 @@ export function createPanel(opts: {
     for (const [key, min, max, step, name] of rows) folder.add(S, key as 'accel', min, max, step).name(name);
   }
 
-  return { gui, sandbox, refresh, setMode, switchControl };
+  const lockedProps = new Set(['mode', 'route', 'preset', 'loadPreset']);
+  let locked = false;
+  function syncLock() {
+    const next = clientLocked();
+    if (next === locked) return;
+    locked = next;
+    gui.domElement.classList.toggle('is-client', next);
+    for (const c of gui.controllersRecursive()) {
+      const hostCtrl = c.object === S ? isHostKey(String(c.property)) : c.object === sandbox && lockedProps.has(String(c.property));
+      if (!hostCtrl) continue;
+      if (next) c.disable();
+      else c.enable();
+    }
+  }
+
+  return { gui, sandbox, refresh, setMode, switchControl, syncLock };
 }
