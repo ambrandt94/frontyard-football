@@ -53,7 +53,7 @@ describe('settings schema', () => {
     saveSettings(store, custom);
     expect(loadSettings(store).accel).toBe(18);
     expect(loadSettings(store).catchPaused).toBe(true);
-    expect(JSON.parse(store.data['tdfb.sandbox.settings.v1']).schemaVersion).toBe(3);
+    expect(JSON.parse(store.data['tdfb.sandbox.settings.v1']).schemaVersion).toBe(4);
 
     let presets = emptyPresetStore();
     presets = upsertPreset(presets, 'Deep balls', custom);
@@ -65,6 +65,6 @@ describe('settings schema', () => {
     expect(presetSettings(loaded, 'Deep balls')?.jogSpeed).toBe(DEFAULTS.jogSpeed);
     const remaining = deletePreset(loaded, 'Arcade');
     expect(presetSettings(remaining, 'Arcade')).toBeNull();
-    expect(toDocument(custom).schemaVersion).toBe(3);
+    expect(toDocument(custom).schemaVersion).toBe(4);
   });
 });

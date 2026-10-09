@@ -229,12 +229,27 @@ export interface CatchModeState {
   cur: CatchRep | null;
 }
 
-/** Live ball-carrier spell after a completion in Throw or Catch mode. */
+/** Live ball-carrier spell after a completion, or after an interception return. */
 export interface CarryState {
   catchY: number;
   yac: number;
   goalY: number;
   goalLabel: 'TOUCHDOWN' | 'TARGET';
+  /** +1 runs toward the far end zone. -1 is an interception return toward home. */
+  goalSign: 1 | -1;
+}
+
+/** Coverage drill totals. They persist across resets, like throw stats. */
+export interface CoverageStats {
+  targets: number;
+  catches: number;
+  pbus: number;
+  ints: number;
+  sepSum: number;
+  throws: number;
+  lastSep: number;
+  last: string;
+  flags: number;
 }
 
 export interface SimState {
@@ -244,6 +259,10 @@ export interface SimState {
   ball: Ball;
   play: { phase: string; t0: number; snapT: number | null; endT: number | null; autoDelay?: number; result?: string };
   stats: { att: number; comp: number; last: string; yacTotal: number; lastYac: number };
+  cov: CoverageStats;
+  /** Seconds of connected arm-check this play. */
+  armT: number;
+  flagged: boolean;
   carry: CarryState | null;
   runScore: { td: number; stops: number; last: string };
   feedback: { text: string; color: string; t: number } | null;

@@ -54,7 +54,8 @@ export function updateHud(opts: {
     const n = cm.phase === 'air' ? cm.count : Math.min(cm.count + 1, S.catchThrowsPerBand);
     const next = st.carry ? 'running after the catch' : S.catchPaused ? 'PAUSED (Start)' : cm.phase === 'windup' ? 'throwing…' : cm.phase === 'air' ? 'ball in the air' : S.requireSnap && !S.catchAIReceiver ? 'press A (or Y to call)' : `in ${Math.max(0, cm.nextT - st.t).toFixed(1)} s`;
     const yacNow = st.carry ? st.carry.yac : cm.cur?.yac;
-    const toLine = st.carry ? Math.max(0, st.carry.goalY - st.players.wr.y) : null;
+    const sign = st.carry?.goalSign ?? 1;
+    const toLine = st.carry ? Math.max(0, (st.carry.goalY - st.players.wr.y) * sign) : null;
     stats.innerHTML = `
     <div class="row"><span>Mode</span><b style="color:#80deea">CATCH</b></div>
     <div class="row"><span>Band</span><b>${cm.band.toUpperCase()} ${lo}-${hi} yd — throw ${n}/${S.catchThrowsPerBand}</b></div>
@@ -69,6 +70,30 @@ export function updateHud(opts: {
     <div class="row"><span>Speed</span><b>${sp.toFixed(1)} yd/s</b></div>
     ${meter}
     <div class="row"><span>State</span><b>${flags}</b></div>
+    <div class="row"><span>Input</span><b>${input.padConnected ? 'gamepad ✓' : 'kb+mouse'} · ${rendererName}</b></div>`;
+  } else if (st.mode === 'coverage') {
+    const cov = st.cov;
+    const avg = cov.throws ? cov.sepSum / cov.throws : 0;
+    const holder = st.ball.holder ? st.players[st.ball.holder] : undefined;
+    const sign = st.carry?.goalSign ?? 1;
+    const toLine = st.carry && holder ? Math.max(0, (st.carry.goalY - holder.y) * sign) : null;
+    const who = st.controlled === 'df' ? 'DEF' : st.controlled === 'wr' ? 'WR' : st.controlled.toUpperCase();
+    stats.innerHTML = `
+    <div class="row"><span>Mode</span><b style="color:#ce93d8">COVERAGE</b></div>
+    <div class="row"><span>Controlling</span><b>${who}</b></div>
+    <div class="row"><span>Route</span><b>${st.route}</b></div>
+    <div class="row"><span>Targets</span><b>${cov.targets}</b></div>
+    <div class="row"><span>Catches allowed</span><b>${cov.catches}</b></div>
+    <div class="row"><span>PBU</span><b>${cov.pbus}</b></div>
+    <div class="row"><span>INT</span><b>${cov.ints}</b></div>
+    <div class="row"><span>Avg separation</span><b>${cov.throws ? avg.toFixed(1) + ' yd' : '—'}</b></div>
+    <div class="row"><span>Last</span><b>${cov.last}${cov.flags ? ' · FLAG ' + cov.flags : ''}</b></div>
+    <div class="row"><span>${holder?.role === 'DF' ? 'Return' : 'YAC'}</span><b>${st.carry ? st.carry.yac.toFixed(1) + ' yd' : '—'}</b></div>
+    <div class="row"><span>${holder?.role === 'DF' ? 'To home' : 'To end zone'}</span><b>${toLine == null ? '—' : toLine.toFixed(1) + ' yd'}</b></div>
+    <div class="row"><span>Speed</span><b>${sp.toFixed(1)} yd/s</b></div>
+    ${meter}
+    <div class="row"><span>State</span><b>${flags}</b></div>
+    <div class="row"><span>Play</span><b>${st.play.phase}</b></div>
     <div class="row"><span>Input</span><b>${input.padConnected ? 'gamepad ✓' : 'kb+mouse'} · ${rendererName}</b></div>`;
   } else if (st.mode === 'run') {
     const c = st.players.rb, d = st.players.df, rs = st.runScore;
@@ -87,14 +112,21 @@ export function updateHud(opts: {
     <div class="row"><span>Play</span><b>${st.play.phase}</b></div>
     <div class="row"><span>Input</span><b>${input.padConnected ? 'gamepad ✓' : 'kb+mouse'} · ${rendererName}</b></div>`;
   } else {
+    const holder = st.players[st.ball.holder || 'wr'];
+    const sign = st.carry?.goalSign ?? 1;
+    const toLine = st.carry && holder ? Math.max(0, (st.carry.goalY - holder.y) * sign) : null;
+    const lineLabel = !st.carry ? 'YAC total' : holder?.role === 'DF' ? 'Return' : st.carry.goalLabel === 'TARGET' ? 'To target' : 'To end zone';
+    const cov = st.players.df ? st.cov : null;
+    const avg = cov && cov.throws ? cov.sepSum / cov.throws : 0;
     stats.innerHTML = `
     <div class="row"><span>Mode</span><b>THROW</b></div>
     <div class="row"><span>Completions</span><b>${st.stats.comp} / ${st.stats.att}</b></div>
     <div class="row"><span>Last result</span><b>${st.stats.last}</b></div>
     <div class="row"><span>Controlling</span><b>${st.controlled === 'qb' ? 'QB (red)' : st.controlled === 'wr' ? 'WR (blue)' : st.controlled.toUpperCase()}</b></div>
     <div class="row"><span>WR route (AI)</span><b>${st.route}</b></div>
+    ${cov ? `<div class="row"><span>Coverage</span><b>${cov.catches} catch · ${cov.pbus} PBU · ${cov.ints} INT${cov.throws ? ' · sep ' + avg.toFixed(1) : ''}</b></div>` : ''}
     <div class="row"><span>YAC</span><b>${st.carry ? st.carry.yac.toFixed(1) + ' yd' : (st.stats.yacTotal ? st.stats.lastYac.toFixed(1) + ' yd' : '—')}</b></div>
-    <div class="row"><span>${st.carry ? (st.carry.goalLabel === 'TARGET' ? 'To target' : 'To end zone') : 'YAC total'}</span><b>${st.carry ? Math.max(0, st.carry.goalY - (st.players[st.ball.holder || 'wr']?.y ?? 0)).toFixed(1) + ' yd' : st.stats.yacTotal.toFixed(1) + ' yd'}</b></div>
+    <div class="row"><span>${lineLabel}</span><b>${toLine == null ? st.stats.yacTotal.toFixed(1) + ' yd' : toLine.toFixed(1) + ' yd'}</b></div>
     <div class="row"><span>Speed</span><b>${sp.toFixed(1)} yd/s</b></div>
     ${meter}
     <div class="row"><span>State</span><b>${flags}</b></div>

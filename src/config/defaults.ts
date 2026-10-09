@@ -152,6 +152,26 @@ export interface Settings {
   autoSwitchCarrier: boolean;
   /** Catch mode scores by crossing this many yards past the catch, or the end zone if that is closer. */
   catchTargetYds: number;
+  /** Spawn the coverage defender in regular Throw mode. Coverage mode always has one. */
+  throwDefender: boolean;
+  /** Pre-snap depth: press is on the receiver, off is a cushion. */
+  covAlign: 'press' | 'off';
+  /** Inside is toward the middle of the field, outside toward the sideline. */
+  covShade: 'inside' | 'outside';
+  /** Bot QB throws once the receiver is at least this far from the defender. */
+  covSep: number;
+  /** Bot QB throws anyway after this many seconds from the snap. */
+  covMaxHold: number;
+  /** 0 is wild, 1 is on the money. Scales throw scatter in Coverage. */
+  covAccuracy: number;
+  /** How hard the AI defender jams, closes, and goes for the ball. */
+  covAiAgg: number;
+  /** LB arm-check connects inside this range. */
+  covArmRange: number;
+  /** Arm-check deceleration on the receiver, yards per second squared. */
+  covArmSlow: number;
+  /** Continuous arm-check time that draws a holding flag. */
+  covFlagTime: number;
   cameraMinExtent: number;
   cameraPadding: number;
   cameraFollow: number;
@@ -318,6 +338,16 @@ export const DEFAULTS: Settings = {
   catchPursuer: true,
   autoSwitchCarrier: true,
   catchTargetYds: 20,
+  throwDefender: false,
+  covAlign: 'off',
+  covShade: 'inside',
+  covSep: 2.5,
+  covMaxHold: 2.6,
+  covAccuracy: 0.72,
+  covAiAgg: 0.65,
+  covArmRange: 1.7,
+  covArmSlow: 1.6,
+  covFlagTime: 0.65,
   cameraMinExtent: 40,
   cameraPadding: 7,
   cameraFollow: 3.0,
@@ -334,6 +364,8 @@ export const DEFAULTS: Settings = {
 const ENUMS: Partial<Record<keyof Settings, readonly string[]>> = {
   playerVisuals: ['model', 'capsule'],
   renderer: ['three', 'canvas2d'],
+  covAlign: ['press', 'off'],
+  covShade: ['inside', 'outside'],
 };
 
 export function catchBandRange(S: Settings, k: string): [number, number] {

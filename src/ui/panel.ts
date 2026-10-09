@@ -142,9 +142,7 @@ export function createPanel(opts: {
   }
 
   function switchControl() {
-    if (st.mode === 'catch') { toast('Catch mode: you are always the receiver'); return; }
-    const pair = st.mode === 'run' ? ['rb', 'df'] : ['qb', 'wr'];
-    st.controlled = st.controlled === pair[0] ? pair[1] : pair[0];
+    if (!sim.switchControl()) { toast('Catch mode: you are always the receiver'); return; }
     sandbox.controlling = st.controlled.toUpperCase();
   }
   function setMode(m: ModeId) {
@@ -157,12 +155,13 @@ export function createPanel(opts: {
   const fp = gui.addFolder('Play');
   fp.add(sandbox, 'mode', MODE_LABELS).name('Mode (N / D-pad ▲)').onChange((v: string) => setMode(modeFromLabel(v))).listen();
   fp.add(S, 'requireSnap').name('Require snap (A / Space)');
-  fp.add(sandbox, 'route', [...ROUTES]).name('WR route (AI)').onChange((v: string) => { st.route = v; sim.reset(); }).listen();
+  fp.add(sandbox, 'route', [...ROUTES]).name('WR route (AI)').onChange((v: string) => { st.route = v; sim.reset(true); }).listen();
   fp.add(sandbox, 'controlling').name('Controlling').listen().disable();
-  fp.add(sandbox, 'switchPlayer').name('Switch QB ⇄ WR (Tab / Back)');
+  fp.add(sandbox, 'switchPlayer').name('Switch control (Tab / Back)');
   fp.add(sandbox, 'reset').name('Reset play (R / Start)');
   fp.add(S, 'autoSwitchCarrier').name('Auto-switch to receiver after catch');
   fp.add(S, 'throwPursuer').name('Throw: pursuer after catch');
+  fp.add(S, 'throwDefender').name('Throw: add defender').onChange(() => { if (st.mode === 'throw') sim.reset(); });
 
   const fm = gui.addFolder('Movement');
   fm.add(S, 'accel', 5, 80, 0.5).name('accel (yd/s²)');
@@ -301,6 +300,18 @@ export function createPanel(opts: {
   ]);
   fcm.add(S, 'catchCycleBands').name('cycle bands (off = random)');
   fcm.close();
+
+  const fcov = gui.addFolder('Coverage');
+  fcov.add(S, 'covAlign', ['off', 'press']).name('Alignment (press / off)').onChange(() => { if (st.mode === 'coverage' || S.throwDefender) sim.reset(); });
+  fcov.add(S, 'covShade', ['inside', 'outside']).name('Shade (inside / outside)').onChange(() => { if (st.mode === 'coverage' || S.throwDefender) sim.reset(); });
+  fcov.add(S, 'covSep', 0.5, 8, 0.1).name('QB throws at separation (yd)');
+  fcov.add(S, 'covMaxHold', 0.4, 5, 0.05).name('QB max hold (s)');
+  fcov.add(S, 'covAccuracy', 0, 1, 0.01).name('QB accuracy');
+  fcov.add(S, 'covAiAgg', 0, 1, 0.01).name('AI defender aggressiveness');
+  fcov.add(S, 'covArmRange', 0.6, 3.5, 0.05).name('Arm-check range (yd)');
+  fcov.add(S, 'covArmSlow', 0.2, 5, 0.05).name('Arm-check slow (yd/s²)');
+  fcov.add(S, 'covFlagTime', 0.15, 2, 0.05).name('Hold before FLAG (s)');
+  fcov.close();
 
   const ft = gui.addFolder('Throwing');
   ft.add(S, 'minThrowSpeed', 5, 25, 0.5).name('min throw speed (yd/s)');

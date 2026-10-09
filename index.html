@@ -29,10 +29,10 @@
    <tr><td class="k">Y</td><td>WR: timed catch · before the throw: CALL FOR THE BALL (HEY!)</td></tr>
    <tr><td class="k">RB / A / X / B</td><td>WR: plant (tap) · hold = stretch → toe-tap fall / jump / dive / bat</td></tr>
    <tr><td class="k">LB / RB ×2</td><td>QB: double-tap = pitch L/R (R-stick flick aims)</td></tr>
-   <tr><td class="k">Back</td><td>switch QB ⇄ WR</td></tr>
+   <tr><td class="k">Back</td><td>switch control (QB ⇄ WR, carrier ⇄ defender, or DEF ⇄ WR)</td></tr>
    <tr><td class="k">Start</td><td>reset play (as WR: Start = QB throws now)</td></tr>
    <tr><td class="k">D-pad ◀▶</td><td>cycle WR route</td></tr>
-   <tr><td class="k">D-pad ▲</td><td>mode: Throw → 1v1 Run → Catch</td></tr>
+   <tr><td class="k">D-pad ▲</td><td>mode: Throw → 1v1 Run → Catch → Coverage</td></tr>
   </table>
   <table>
    <tr><td colspan="2" style="color:#9fe39f">Keyboard + mouse</td></tr>
@@ -45,12 +45,12 @@
    <tr><td class="k">V / Space</td><td>RB plant (hold = stretch) / A jump</td></tr>
    <tr><td class="k">Z / V ×2</td><td>QB: double-tap pitch L/R (arrows flick)</td></tr>
    <tr><td class="k">X / B</td><td>dive / bat</td></tr>
-   <tr><td class="k">Tab</td><td>switch QB ⇄ WR</td></tr>
+   <tr><td class="k">Tab</td><td>switch control (QB ⇄ WR, or DEF ⇄ WR in Coverage)</td></tr>
    <tr><td class="k">R / Enter</td><td>reset play / Start (WR: QB throws)</td></tr>
-   <tr><td class="k">[ ] or 1-5</td><td>route · M = 2D/3D · wheel = zoom</td></tr>
+   <tr><td class="k">[ ] or 1-9</td><td>route · M = 2D/3D · wheel = zoom</td></tr>
    <tr><td class="k">Space (pre-snap)</td><td>SNAP (A) — jump/hurdle/tackle only once live</td></tr>
    <tr><td class="k">E (before throw)</td><td>call for the ball (Y)</td></tr>
-   <tr><td class="k">N</td><td>mode: Throw → 1v1 Run → Catch</td></tr>
+   <tr><td class="k">N</td><td>mode: Throw → 1v1 Run → Catch → Coverage</td></tr>
   </table>
   <table>
    <tr><td colspan="2" class="mode-run">1v1 Run mode (pad · keyboard)</td></tr>
@@ -70,7 +70,19 @@
    <tr><td class="k">X · X</td><td>diving tackle (long reach, can be hurdled)</td></tr>
    <tr><td class="k">Y · E</td><td>punch at the ball</td></tr>
    <tr><td class="k">Back · Tab</td><td>switch carrier ⇄ defender</td></tr>
-   <tr><td colspan="2" style="color:#888">After a catch in Throw or Catch, the receiver uses this same carrier set until a tackle, out of bounds, the end zone (or Catch target line), or a dive that comes up short. Before the catch, receiver buttons still catch.</td></tr>
+   <tr><td colspan="2" style="color:#888">After a catch in Throw or Catch, the receiver uses this same carrier set until a tackle, out of bounds, the end zone (or Catch target line), or a dive that comes up short. Before the catch, receiver buttons still catch. An interception uses it too: the defender returns toward the home end zone.</td></tr>
+  </table>
+  <table>
+   <tr><td colspan="2" class="mode-run">Coverage (1-on-1, you start as the defender)</td></tr>
+   <tr><td class="k">A · Space</td><td>snap. The bot QB throws when the receiver separates, or when the max hold time is up.</td></tr>
+   <tr><td class="k">Back · Tab</td><td>switch DEF ⇄ WR. Whoever you are not controlling is AI.</td></tr>
+   <tr><td class="k">LT · Q</td><td>break down / square up</td></tr>
+   <tr><td class="k">LB · Z</td><td>arm-check in coverage (slows the receiver when you're close). Too long and it's FLAG — HOLDING.</td></tr>
+   <tr><td class="k">Y · E</td><td>ball in the air: interception (same timing as a catch). Otherwise: punch.</td></tr>
+   <tr><td class="k">B · B</td><td>bat the ball (PBU)</td></tr>
+   <tr><td class="k">A / X · Space / X</td><td>after the catch: wrap tackle / diving tackle</td></tr>
+   <tr><td colspan="2" style="color:#888">Before the throw the defender can line up anywhere. Press or off, and inside or outside shade, are in the Coverage folder. Throw mode can add this same defender with “Throw: add defender”.</td></tr>
+   <tr><td colspan="2" style="color:#888">Outcomes: INCOMPLETE, PBU, INT, CATCH, then yards after the catch until a tackle or a score. After an INT you are the ball carrier and return it with the 1v1 carrier controls.</td></tr>
   </table>
   <table>
    <tr><td colspan="2" class="mode-run">Catch mode (you are always the WR)</td></tr>

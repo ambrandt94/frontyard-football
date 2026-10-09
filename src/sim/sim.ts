@@ -3,7 +3,7 @@
  * Time is seconds, space is yards. Pass a fixed dt (the app uses 1/120).
  */
 import { catchBandRange, type Settings } from '../config/defaults';
-import { CATCH_H, FIELD_L, FIELD_W, GOAL_Y, GRAV, JOG_TILT, LOS_Y, RELEASE_H } from '../config/constants';
+import { CATCH_H, FIELD_L, FIELD_W, GOAL_Y, GRAV, HOME_Y, JOG_TILT, LOS_Y, RELEASE_H, ROUTES } from '../config/constants';
 import type { ModeId } from '../modes';
 import { approachAngle, clamp, gauss as gaussOf, lerp, lowAngle, rad, speedForAngle, wrapAngle } from './math';
 import { defaultRng, type Rng } from './rng';
@@ -20,11 +20,13 @@ const MOVE_COLORS: Record<string, string> = { SIDESTEP: '#80deea', TRUCK: '#ff8a
 export interface Sim {
   state: SimState;
   step(dt: number, human?: SimInput | null): void;
-  reset(): void;
+  reset(keepRoute?: boolean): void;
+  /** Back / Tab. False in Catch mode, where you are always the receiver. */
+  switchControl(): boolean;
   previewThrow(power: number, tgt: Vec2): { arc: ArcPoint[]; sol: ThrowSolution; step: { f: number; mult: number; err: number } };
   routeWaypoints(name: string): Vec2[];
   snap(): void;
-  doThrow(tgt: Vec2, power: number, useError: boolean): void;
+  doThrow(tgt: Vec2, power: number, useError: boolean, errScale?: number): void;
   setMode(m: ModeId): void;
   resolveTackle(d: Player, c: Player, kind: 'wrap' | 'dive'): { kind: string; p: number; f: number; bigHit: boolean; notes: string[]; result: string; t: number };
   handPos(p: Player): Vec2;
@@ -35,8 +37,11 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
   const gauss = () => gaussOf(rng);
   const st: SimState = {
     t: 0, mode: 'throw', players: {}, ball: null as unknown as Ball, play: null as unknown as SimState['play'],
-    stats: { att: 0, comp: 0, last: '—', yacTotal: 0, lastYac: 0 }, carry: null, runScore: { td: 0, stops: 0, last: '—' }, feedback: null, floaters: [],
-    route: 'slant', controlled: 'qb', ctl: { throw: 'qb', run: 'rb', catch: 'wr' }, ai: {},
+    stats: { att: 0, comp: 0, last: '—', yacTotal: 0, lastYac: 0 },
+    cov: { targets: 0, catches: 0, pbus: 0, ints: 0, sepSum: 0, throws: 0, lastSep: 0, last: '—', flags: 0 },
+    armT: 0, flagged: false,
+    carry: null, runScore: { td: 0, stops: 0, last: '—' }, feedback: null, floaters: [],
+    route: 'slant', controlled: 'qb', ctl: { throw: 'qb', run: 'rb', catch: 'wr', coverage: 'df' }, ai: {},
   };
 
   function newPlayer(id: string, role: string, x: number, y: number): Player {
@@ -52,22 +57,47 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
   }
   function say(text: string, color = '#fff') { st.feedback = { text, color, t: st.t }; }
 
-  function reset() {
+  function reset(keepRoute = false) {
     st.floaters = [];
     st.carry = null;
+    st.armT = 0;
+    st.flagged = false;
     if (st.mode === 'run') return resetRun();
     if (st.mode === 'catch') return resetCatch();
+    if (st.mode === 'coverage' && !keepRoute) st.route = ROUTES[Math.floor(rng.random() * ROUTES.length) % ROUTES.length];
     st.callAt = null;
     st.players = {};
     st.players.qb = newPlayer('qb', 'QB', FIELD_W / 2, LOS_Y - 5);
     st.players.wr = newPlayer('wr', 'WR', 12, LOS_Y - 0.6);
-    if (S.throwModeRB) st.players.hb = addRunState(newPlayer('hb', 'RB', FIELD_W / 2 + S.trailWidth, LOS_Y - 5 - S.trailDepth));
+    if (st.mode === 'throw' && S.throwModeRB) st.players.hb = addRunState(newPlayer('hb', 'RB', FIELD_W / 2 + S.trailWidth, LOS_Y - 5 - S.trailDepth));
+    st.ai = { wr: { wp: routeWaypoints(st.route), wpi: 0, pressed: false, noise: 0, dove: false, done: false }, qb: { aim: null } };
+    if (passDefense()) {
+      st.players.df = placeDefender(st.players.wr);
+      st.ai.df = { seen: null, seenT: -9, pumpT: 0, pressed: false, dove: false };
+    }
     st.ball = { state: 'held', holder: 'qb', x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, arc: [], landing: null, aimed: null, throwT: 0, resolved: false, gave: false, power: 0 };
     st.play = { phase: 'pre', t0: st.t, snapT: null, endT: null, autoDelay: 0 };
-    st.ai = { wr: { wp: routeWaypoints(st.route), wpi: 0, pressed: false, noise: 0, dove: false, done: false }, qb: { aim: null } };
     st.aimQB = { x: FIELD_W / 2, y: LOS_Y + 12 };
     say(S.requireSnap ? 'SET' : 'SET');
     holdBall();
+  }
+  /** Coverage always has a defender. Throw mode does when the panel toggle is on. */
+  function passDefense() { return st.mode === 'coverage' || (st.mode === 'throw' && S.throwDefender); }
+  function placeDefender(wr: Player): Player {
+    const shade = S.covShade === 'outside' ? -1 : 1;
+    const press = S.covAlign === 'press';
+    const depth = press ? 1.3 : 6;
+    const lat = (press ? 0.8 : 1.6) * shade;
+    const df = addRunState(newPlayer('df', 'DF', clamp(wr.x + lat, 1, FIELD_W - 1), clamp(wr.y + depth, 1, FIELD_L - 1)));
+    df.facing = -Math.PI / 2;
+    return df;
+  }
+  function switchControl(): boolean {
+    if (st.mode === 'catch') return false;
+    const pair = st.mode === 'run' ? ['rb', 'df'] : st.mode === 'coverage' ? ['df', 'wr'] : ['qb', 'wr'];
+    st.controlled = st.controlled === pair[0] ? pair[1] : pair[0];
+    st.ctl[st.mode] = st.controlled;
+    return true;
   }
 
   function routeWaypoints(name: string): Vec2[] {
@@ -79,6 +109,10 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
       case 'out': return [P(0, 10), P(-9.5, 10)];
       case 'hitch': return [P(0, 6), P(0, 5)];
       case 'curl': return [P(0, 12), P(2.5, 10)];
+      case 'post': return [P(0, 12), P(14, 28)];
+      case 'corner': return [P(0, 10), P(-8, 26)];
+      case 'comeback': return [P(0, 18), P(0, 12)];
+      case 'dig': return [P(0, 10), P(16, 10)];
     }
     return [P(0, 20)];
   }
@@ -108,7 +142,8 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     let mx = inp.mx, my = inp.my; const m = Math.min(1, Math.hypot(mx, my)); p.stick = m;
     p.squared = !!inp.lt;
     if (p.role === 'QB') { const aim = st.ball.holder === 'qb' ? (inp.aim || st.aimQB) : null; if (aim) p.squareDir = aim.x >= p.x ? 0 : Math.PI; }
-    else p.squareDir = (p.role === 'RB' || p.role === 'TB' || (st.carry && p.id === st.ball.holder)) ? Math.PI / 2 : -Math.PI / 2;
+    else if (st.carry && p.id === st.ball.holder) p.squareDir = st.carry.goalSign < 0 ? -Math.PI / 2 : Math.PI / 2;
+    else p.squareDir = (p.role === 'RB' || p.role === 'TB') ? Math.PI / 2 : -Math.PI / 2;
 
     if (p.jumpT >= 0) { p.jumpT += dt; const u = p.jumpT / (p.jumpDur || S.jumpDuration); if (u >= 1) { p.jumpT = -1; p.z = 0; } else p.z = 4 * (p.jumpH || S.jumpHeight) * u * (1 - u); }
 
@@ -216,13 +251,13 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     const sol = solveThrow(from, tgt, power, sf.mult);
     return { arc: predictArc(from.x, from.y, from.z, sol.vx, sol.vy, sol.vz, st.t), sol, step: sf };
   }
-  function doThrow(tgt: Vec2, power: number, useError: boolean) {
+  function doThrow(tgt: Vec2, power: number, useError: boolean, errScale = 1) {
     const qb = st.players.qb, b = st.ball;
     if (b.holder !== 'qb' || st.play.phase === 'over') return;
     snap();
     const sf = stepFactor(qb, tgt), from = releasePoint(qb);
     const dist = Math.hypot(tgt.x - qb.x, tgt.y - qb.y);
-    const err = useError ? S.baseInaccuracy * (dist / 20) * sf.err * (qb.squared ? 1 : S.unsquaredInaccuracy) : 0;
+    const err = useError ? S.baseInaccuracy * (dist / 20) * sf.err * (qb.squared ? 1 : S.unsquaredInaccuracy) * errScale : 0;
     const aimed = { x: tgt.x + gauss() * err, y: tgt.y + gauss() * err };
     const sol = solveThrow(from, aimed, power, sf.mult);
     Object.assign(b, { state: 'air', holder: null, x: from.x, y: from.y, z: from.z, vx: sol.vx, vy: sol.vy, vz: sol.vz, throwT: st.t, resolved: false, gave: false, power, aimed: { ...tgt } });
@@ -230,8 +265,39 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     st.stats.att++; st.callAt = null;
     const kind = power > 0.66 ? 'BULLET' : power < 0.33 ? 'LOFT' : 'TOUCH';
     say(`${kind}${sf.f > 0.25 ? ' · stepped in' : sf.f < -0.25 ? ' · back foot' : ''}`, '#cfe');
-    const w = st.players.wr; w.wasIn = false; w.lateUntil = 0; w.dropPending = false; w.blockedPass = false; w.lastAttempt = null;
-    st.ai.wr.pressed = false; st.ai.wr.dove = false; st.ai.wr.cp = null; st.ai.wr.pressAt = null; st.ai.wr.noise = gauss() * S.aiTimingErrorMs / 1000;
+    for (const p of [st.players.wr, st.players.df]) {
+      if (!p) continue;
+      p.wasIn = false; p.lateUntil = 0; p.dropPending = false; p.blockedPass = false; p.lastAttempt = null;
+      const bag = st.ai[p.id];
+      if (bag) { bag.pressed = false; bag.dove = false; bag.cp = null; bag.pressAt = null; }
+    }
+    if (st.ai.wr) st.ai.wr.noise = gauss() * S.aiTimingErrorMs / 1000;
+    const df = st.players.df;
+    if (df && passDefense()) {
+      const sep = Math.hypot(st.players.wr.x - df.x, st.players.wr.y - df.y);
+      st.cov.targets++; st.cov.throws++; st.cov.sepSum += sep; st.cov.lastSep = sep;
+    }
+  }
+  function leadReceiver(power: number): Vec2 {
+    const qb = st.players.qb, r = st.players.wr;
+    let tf = 0.8;
+    let tgt = { x: r.x, y: r.y };
+    for (let i = 0; i < 5; i++) {
+      tgt = { x: clamp(r.x + r.vx * tf, 1, FIELD_W - 1), y: clamp(r.y + r.vy * tf, 0, FIELD_L) };
+      const sol = solveThrow(releasePoint(qb), tgt, power, 1);
+      tf = flightTimeTo(RELEASE_H, sol.vz, CATCH_H);
+    }
+    return tgt;
+  }
+  function maybeThrowCoverage() {
+    if (st.mode !== 'coverage') return;
+    const b = st.ball;
+    if (b.holder !== 'qb' || st.play.phase !== 'live' || st.play.snapT == null || !st.players.df) return;
+    const sep = Math.hypot(st.players.wr.x - st.players.df.x, st.players.wr.y - st.players.df.y);
+    if (sep < S.covSep && st.t - st.play.snapT < S.covMaxHold) return;
+    const lob = rng.random() < 0.45;
+    const power = lob ? 0.15 + rng.random() * 0.2 : 0.75 + rng.random() * 0.25;
+    doThrow(leadReceiver(power), power, true, lerp(2.2, 0.35, clamp(S.covAccuracy, 0, 1)));
   }
   function flightTimeTo(h0: number, vz: number, h1: number) { const disc = vz * vz + 2 * GRAV * (h0 - h1); return disc < 0 ? 1 : (vz + Math.sqrt(disc)) / GRAV; }
   function aiQBThrow() {
@@ -278,7 +344,10 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     if (p.attempt && !p.blockedPass && inReach(p, b.x, b.y, b.z, p.attempt.radius)) {
       const type = p.attempt.type; p.attempt = null;
       if (type === 'bat') {
-        b.vx *= 0.15; b.vy *= 0.15; b.vz = -7; b.resolved = true; b.gave = true; say('BATTED', '#ffab40'); endPlay('BATTED'); return;
+        b.vx *= 0.15; b.vy *= 0.15; b.vz = -7; b.resolved = true; b.gave = true;
+        if (p.role === 'DF') { st.cov.pbus++; st.cov.last = 'PBU'; say('PBU', '#ffab40'); endPlay('PBU'); }
+        else { say('BATTED', '#ffab40'); endPlay('BATTED'); }
+        return;
       }
       if (type === 'one' && rng.random() > S.oneHandSuccess) {
         b.vx = b.vx * 0.25 + gauss(); b.vy = b.vy * 0.25 + gauss(); b.vz = 2.5; b.resolved = true; b.gave = true;
@@ -289,9 +358,16 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
         b.resolved = true; b.gave = true; b.vx *= 0.3; b.vy *= 0.3; st.stats.last = 'OUT OF BOUNDS';
         say('OUT OF BOUNDS — INCOMPLETE', '#bbb'); floatText('OUT OF BOUNDS', p.x, p.y, '#bbb'); return;
       }
-      b.state = 'held'; b.holder = p.id; b.resolved = true; b.gave = true; st.stats.comp++;
-      if (p.planted) floatText('TOE-TAP CATCH!', p.x, p.y, '#69f0ae');
-      say(p.planted ? 'TOE-TAP CATCH!' : type === 'one' ? 'ONE-HAND CATCH!' : (p.diveT >= 0 || p.groundT > 0) ? 'DIVING CATCH!' : p.z > 0.05 ? 'HIGH-POINT CATCH!' : 'CATCH', '#69f0ae');
+      b.state = 'held'; b.holder = p.id; b.resolved = true; b.gave = true;
+      if (p.role === 'DF') {
+        st.cov.ints++; st.cov.last = 'INT';
+        say('INT', '#ff8a65');
+      } else {
+        st.stats.comp++;
+        if (passDefense()) { st.cov.catches++; st.cov.last = 'CATCH'; }
+        if (p.planted) floatText('TOE-TAP CATCH!', p.x, p.y, '#69f0ae');
+        say(p.planted ? 'TOE-TAP CATCH!' : type === 'one' ? 'ONE-HAND CATCH!' : (p.diveT >= 0 || p.groundT > 0) ? 'DIVING CATCH!' : p.z > 0.05 ? 'HIGH-POINT CATCH!' : 'CATCH', '#69f0ae');
+      }
       beginCarry(p); return;
     }
     const nowIn = inReach(p, b.x, b.y, b.z, S.catchReach);
@@ -348,10 +424,11 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     if (b.holder === 'wr') { inp.my = 1; return inp; }
     if (st.play.phase !== 'live') return inp;
     const wp = ai.wp && ai.wpi != null ? ai.wp[ai.wpi] : undefined;
-    if (!wp) { if (st.route === 'hitch' || st.route === 'curl') inp.lt = true; return inp; }
+    const settleRoute = st.route === 'hitch' || st.route === 'curl' || st.route === 'comeback';
+    if (!wp) { if (settleRoute) inp.lt = true; return inp; }
     const dx = wp.x - p.x, dy = wp.y - p.y, d = Math.hypot(dx, dy);
     if (d < 0.7) { ai.wpi = (ai.wpi || 0) + 1; return aiReceiver(p); }
-    const last = ai.wpi === (ai.wp?.length ?? 0) - 1, settle = last && (st.route === 'hitch' || st.route === 'curl');
+    const last = ai.wpi === (ai.wp?.length ?? 0) - 1, settle = last && settleRoute;
     const mag = settle ? clamp(d / 3, 0.3, 1) : 1;
     inp.mx = dx / d * mag; inp.my = dy / d * mag; inp.sprint = st.route === 'go' && aiPump(ai);
     return inp;
@@ -385,13 +462,19 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     if (st.mode === 'run') return stepRun(dt, human);
     if (st.mode === 'catch') return stepCatch(dt, human);
     if (st.carry) return stepAfterCatch(dt, human);
-    const ctl = st.controlled, other = ctl === 'qb' ? 'wr' : 'qb';
-    const inputs: Record<string, SimInput> = { [ctl]: human || blankInput() };
-    inputs[other] = other === 'wr' ? aiReceiver(st.players.wr) : aiQB();
-    let hi = inputs[ctl];
+    const humanIn = human || blankInput();
+    const ctl = st.controlled;
+    const inputs: Record<string, SimInput> = {};
+    inputs.qb = ctl === 'qb' ? humanIn : (st.mode === 'coverage' ? aiCoverageQB() : aiQB());
+    inputs.wr = ctl === 'wr' ? humanIn : aiReceiver(st.players.wr);
+    if (st.players.df) inputs.df = ctl === 'df' ? humanIn : aiCoverageDefender(st.players.df, dt);
+    let hi = inputs[ctl] || blankInput();
     if (S.requireSnap) {
       if (st.play.phase === 'pre') {
-        const go = hi.a; inputs.qb = blankInput(); inputs.wr = blankInput(); hi = inputs[ctl];
+        const go = humanIn.a;
+        inputs.qb = blankInput();
+        inputs.wr = blankInput();
+        hi = inputs[ctl] || blankInput();
         if (go) snap();
       }
     } else {
@@ -401,30 +484,130 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     if (ctl === 'wr' && hi.y && st.ball.holder === 'qb' && st.play.phase === 'live') callForBall(st.players.wr, () => { st.callAt = st.t + S.callReactionDelay; });
     if (ctl === 'qb' && hi.aim) st.aimQB = hi.aim;
 
-    const qb = st.players.qb, w0 = st.players.wr, hb = st.players.hb;
+    const qb = st.players.qb, w0 = st.players.wr, hb = st.players.hb, df = st.players.df;
     flickCheck(qb, inputs.qb, false); shoulderButtons(qb, inputs.qb, { hands: false, stiff: false }); pitchUpdate(qb, false);
     plantStretch(w0, inputs.wr);
     updateMovement(qb, { ...inputs.qb, rb: false }, dt);
     updateMovement(w0, { ...inputs.wr, rb: false }, dt);
     if (hb) updateMovement(hb, { ...(st.play.phase === 'pre' ? blankInput() : aiPitchBack(hb, qb, -1)), rb: false }, dt);
+    if (df && inputs.df) stepDefenderCoverage(df, inputs.df, w0, dt);
 
     if (st.ball.holder === 'qb') {
       if (ctl === 'qb' && hi.throwPower !== null) doThrow(st.aimQB || { x: qb.x, y: qb.y + 12 }, hi.throwPower, true);
+      else if (st.mode === 'coverage') maybeThrowCoverage();
       else if (ctl === 'wr' && st.play.phase === 'live' && st.play.snapT != null && (hi.start || st.t - st.play.snapT > S.autoThrowDelay || (st.callAt != null && st.t >= st.callAt))) aiQBThrow();
     }
     const wi = inputs.wr, w = st.players.wr;
-    const airNow = st.ball.state === 'air';
+    const airNow = st.ball.state === 'air' && !st.ball.pitch;
     if (wi.y && airNow) startAttempt(w, 'two'); else if (wi.rt && airNow) startAttempt(w, 'one'); else if (wi.b) startAttempt(w, 'bat');
     ballUpdate(dt);
     const b = st.ball;
     if (b.pitch) { pitchCatchCheck(); looseBallCheck(); }
-    else catchUpdate(w);
+    else {
+      if (st.players.df) catchUpdate(st.players.df);
+      if (b.state === 'air' && !b.resolved) catchUpdate(w);
+    }
     st.floaters = st.floaters.filter(f => st.t - f.t < 1.3);
     if (!b.pitch && b.state !== 'air' && b.state !== 'held' && b.resolved && st.play.phase !== 'over') {
       if (!b.gave) say('INCOMPLETE', '#bbb');
-      endPlay(b.gave && st.stats.last !== '—' && st.stats.last !== 'CATCH' ? st.stats.last : 'INCOMPLETE');
+      const result = b.gave && st.stats.last !== '—' && st.stats.last !== 'CATCH' ? st.stats.last : 'INCOMPLETE';
+      if (passDefense()) st.cov.last = result;
+      endPlay(result);
     }
     if (S.autoReset && st.play.phase === 'over' && st.play.endT != null && st.t - st.play.endT > (st.play.result === 'CATCH' ? 3.5 : 2.2)) reset();
+  }
+  function stepDefenderCoverage(df: Player, di: SimInput, wr: Player, dt: number) {
+    updateMovement(df, { ...di, a: false, x: false, y: false, b: false, rb: false }, dt);
+    const caught = st.ball.state === 'held' && !!st.ball.holder && st.ball.holder !== 'qb';
+    const air = st.ball.state === 'air' && !st.ball.resolved && !st.ball.pitch;
+    if (!caught && st.play.phase === 'live' && di.lbHeld) armCheck(df, wr, dt);
+    if (air) {
+      if (di.y) startAttempt(df, 'two');
+      if (di.b) startAttempt(df, 'bat');
+    } else if (!caught && di.y && st.play.phase === 'live') coveragePunch(df, wr);
+  }
+  function armCheck(df: Player, wr: Player, dt: number) {
+    const dx = wr.x - df.x, dy = wr.y - df.y, dist = Math.hypot(dx, dy);
+    if (dist > S.covArmRange || dist < 0.05) return;
+    const sp = Math.hypot(wr.vx, wr.vy);
+    if (sp > 0.05) {
+      const ns = Math.max(0, sp - S.covArmSlow * dt);
+      wr.vx *= ns / sp; wr.vy *= ns / sp;
+    }
+    const pull = clamp((S.covArmSlow * dt) / dist, 0, 0.45);
+    df.vx += (dx / dist) * pull * 6 + (wr.vx - df.vx) * 0.2;
+    df.vy += (dy / dist) * pull * 6 + (wr.vy - df.vy) * 0.2;
+    st.armT += dt;
+    if (!st.flagged && st.armT >= S.covFlagTime) {
+      st.flagged = true;
+      st.cov.flags++;
+      say('FLAG — HOLDING', '#ffd54a');
+      floatText('FLAG — HOLDING', df.x, df.y, '#ffd54a');
+    }
+  }
+  function coveragePunch(df: Player, wr: Player) {
+    if (st.t <= df.punchCD) return;
+    df.punchCD = st.t + S.punchCooldown;
+    const dist = Math.hypot(wr.x - df.x, wr.y - df.y);
+    floatText(dist <= S.punchReach ? 'PUNCH' : 'PUNCH (whiff)', df.x, df.y, dist <= S.punchReach ? '#b39ddb' : '#888');
+  }
+  function aiCoverageQB(): SimInput {
+    const inp = blankInput();
+    if (st.ball.holder === 'qb') {
+      inp.lt = true;
+      const r = st.players.wr;
+      st.aimQB = { x: r.x, y: r.y };
+      inp.aim = st.aimQB;
+    }
+    return inp;
+  }
+  function aiCoverageDefender(d: Player, dt: number): SimInput {
+    const b = st.ball;
+    if (b.state === 'held' && b.holder && b.holder !== 'qb') return aiDefender(d, dt);
+    const inp = blankInput();
+    const ai = (st.ai.df = st.ai.df || { pumpT: 0 });
+    const wr = st.players.wr;
+    const agg = clamp(S.covAiAgg, 0, 1);
+    if (b.state === 'air' && !b.resolved && !b.pitch && b.arc.length) {
+      let cp: ArcPoint | null = null;
+      for (const pt of b.arc) {
+        if (pt.t < st.t + 0.05 || pt.z > S.reachHeight - 0.2 || pt.z < 0.3) continue;
+        cp = pt;
+        const dist = Math.hypot(pt.x - d.x, pt.y - d.y);
+        const need = dist < 0.6 ? 0 : 0.15 + dist / (S.fullSpeed * 0.9);
+        if (need <= pt.t - st.t) break;
+      }
+      if (cp) {
+        const dx = cp.x - d.x, dy = cp.y - d.y, dist = Math.hypot(dx, dy);
+        if (dist > 0.3) {
+          inp.mx = dx / dist; inp.my = dy / dist;
+          if (dist > 3 && aiPump(ai)) inp.sprint = true;
+        }
+        if (dist < 1.6) inp.lt = true;
+        if (!ai.pressed && dist < S.catchReach + 1.1) {
+          if (rng.random() < 0.35 + agg * 0.55) inp.y = true;
+          else inp.b = true;
+          ai.pressed = true;
+        }
+      }
+      return inp;
+    }
+    if (st.play.phase !== 'live' && st.play.phase !== 'pre') return inp;
+    const press = S.covAlign === 'press';
+    const shade = S.covShade === 'outside' ? -1 : 1;
+    const cushion = press ? 1.15 : 5.2;
+    const tx = clamp(wr.x + shade * (press ? 0.55 : 1.3), 1, FIELD_W - 1);
+    const ty = clamp(wr.y + cushion, 1, FIELD_L - 1);
+    const dx = tx - d.x, dy = ty - d.y, dist = Math.hypot(dx, dy);
+    if (dist > 0.25) {
+      const mag = dist < 1.2 ? clamp(dist / 1.2, 0.25, 1) : 1;
+      inp.mx = (dx / dist) * mag; inp.my = (dy / dist) * mag;
+    }
+    const gap = Math.hypot(wr.x - d.x, wr.y - d.y);
+    if (gap > (press ? 2.4 : 4) && aiPump(ai)) inp.sprint = true;
+    if (press && gap < 2.2) inp.lt = true;
+    if (gap < S.covArmRange && rng.random() < agg * (press ? 2.5 : 0.4) * dt) inp.lbHeld = true;
+    return inp;
   }
 
   function bandRange(k: string) { return catchBandRange(S, k); }
@@ -671,7 +854,7 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
   }
   function canPitch(p: Player) {
     return st.ball.holder === p.id && st.ball.state === 'held' && st.play.phase !== 'over'
-      && (p.role === 'QB' || p.role === 'RB' || (!!st.carry && (p.role === 'WR' || p.role === 'TB')));
+      && (p.role === 'QB' || p.role === 'RB' || (!!st.carry && (p.role === 'WR' || p.role === 'TB' || p.role === 'DF')));
   }
   function beginPitch(p: Player, side: 'L' | 'R') {
     const bf = p.bufferedFlick && st.t - p.bufferedFlick.t <= S.doubleTapWindow + 0.05 ? p.bufferedFlick : null;
@@ -915,20 +1098,24 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     if (key === 'lbHeld' || key === 'rbHeld' || key === 'a' || key === 'x' || key === 'y') inp[key] = true;
   }
   function aiCarrier(c: Player, dt: number): SimInput {
-    const inp = blankInput(), d = st.players.df, ai = (st.ai[c.id] = st.ai[c.id] || {}), t = st.t;
+    const inp = blankInput(), ai = (st.ai[c.id] = st.ai[c.id] || {}), t = st.t;
+    const sign = st.carry?.goalSign ?? 1;
+    const threat = c.role === 'DF' ? st.players.wr : st.players.df;
     const goalY = st.carry?.goalY ?? GOAL_Y;
     if (ai.tap) { pressHeld(inp, ai.tap); ai.tap = null; }
     if (ai.holdArm && t < (ai.holdUntil || 0)) pressHeld(inp, ai.holdArm); else ai.holdArm = null;
     if (st.play.phase !== 'live') return inp;
-    if (!d) {
-      inp.my = 1;
+    const room = (goalY - c.y) * sign;
+    if (!threat || threat.id === c.id) {
+      inp.my = sign;
       if (aiPump(ai)) inp.sprint = true;
-      if (goalY - c.y < S.runDiveDistance && goalY - c.y > 0.6) inp.x = true;
+      if (room < S.runDiveDistance && room > 0.6) inp.x = true;
       return inp;
     }
+    const d = threat;
     const rx = d.x - c.x, ry = d.y - c.y, dist = Math.hypot(rx, ry);
-    const ahead = ry > -1 && d.groundT <= 0;
-    let tx = c.x, ty = goalY + 3;
+    const ahead = (sign > 0 ? d.y > c.y - 1 : d.y < c.y + 1) && d.groundT <= 0;
+    let tx = c.x, ty = goalY + 3 * sign;
     if (ahead && dist < 15) {
       let s = Math.sign(c.x - d.x) || (c.x < FIELD_W / 2 ? 1 : -1);
       if ((s > 0 && c.x > FIELD_W - 7) || (s < 0 && c.x < 7)) s = -s;
@@ -952,11 +1139,11 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
       else { ai.holdArm = relSide(c, d) > 0 ? 'lbHeld' : 'rbHeld'; ai.holdUntil = t + 0.7; }
       if (ang !== null) inp.rs = { x: Math.cos(ang), y: Math.sin(ang) };
     }
-    if (goalY - c.y < S.runDiveDistance && goalY - c.y > 0.6 && dist < 3) inp.x = true;
+    if (room < S.runDiveDistance && room > 0.6 && dist < 3) inp.x = true;
     return inp;
   }
   function aiDefender(d: Player, dt: number): SimInput {
-    const inp = blankInput(), ai = st.ai.df, t = st.t, b = st.ball;
+    const inp = blankInput(), ai = (st.ai[d.id] = st.ai[d.id] || { seen: null, seenT: -9, pumpT: 0 }), t = st.t, b = st.ball;
     const holder = b.holder ? st.players[b.holder] : undefined;
     const c = holder ? holder : { x: b.x, y: b.y, vx: b.vx, vy: b.vy, groundT: 0 };
     if (st.play.phase !== 'live' || c.groundT > 0) return inp;
@@ -967,11 +1154,14 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     const mySpeed = S.sprintMaxSpeed * 0.95;
     let tt = Math.hypot(sx - d.x, sy - d.y) / mySpeed;
     for (let i = 0; i < 3; i++) tt = Math.hypot(sx + s.vx * tt * S.aiLead - d.x, sy + s.vy * tt * S.aiLead - d.y) / mySpeed;
+    const sign = st.carry?.goalSign ?? 1;
     const goalY = st.carry?.goalY ?? GOAL_Y;
-    const tx = clamp(sx + s.vx * tt * S.aiLead, 0, FIELD_W), ty = Math.min(sy + s.vy * tt * S.aiLead + 0.8, goalY + 2);
+    const tx = clamp(sx + s.vx * tt * S.aiLead, 0, FIELD_W);
+    const leadY = sy + s.vy * tt * S.aiLead;
+    const ty = sign < 0 ? Math.max(leadY - 0.8, goalY - 2) : Math.min(leadY + 0.8, goalY + 2);
     const dx = tx - d.x, dy = ty - d.y, dd = Math.hypot(dx, dy);
     if (dd > 0.2) { inp.mx = dx / dd; inp.my = dy / dd; }
-    const real = Math.hypot(c.x - d.x, c.y - d.y), inFront = d.y > c.y - 0.5;
+    const real = Math.hypot(c.x - d.x, c.y - d.y), inFront = sign < 0 ? d.y < c.y + 0.5 : d.y > c.y - 0.5;
     if (real > 6 && aiPump(ai)) inp.sprint = true;
     if (real < lerp(4.5, 2.2, S.aiAggression) && inFront) inp.lt = true;
     if (real < S.wrapReach + 0.4 && !d.tackle) inp.a = true;
@@ -985,25 +1175,46 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
   function beginCarry(p: Player) {
     addRunState(p);
     p.hand = p.hand || 'R';
-    const goalY = st.mode === 'catch' ? Math.min(GOAL_Y, p.y + Math.max(1, S.catchTargetYds)) : GOAL_Y;
-    const goalLabel = goalY >= GOAL_Y - 0.05 ? 'TOUCHDOWN' : 'TARGET';
-    st.carry = { catchY: p.y, yac: 0, goalY, goalLabel };
+    const returning = p.role === 'DF';
+    let goalY = GOAL_Y;
+    let goalLabel: 'TOUCHDOWN' | 'TARGET' = 'TOUCHDOWN';
+    let goalSign: 1 | -1 = 1;
+    if (returning) {
+      goalY = HOME_Y;
+      goalSign = -1;
+    } else if (st.mode === 'catch') {
+      goalY = Math.min(GOAL_Y, p.y + Math.max(1, S.catchTargetYds));
+      goalLabel = goalY >= GOAL_Y - 0.05 ? 'TOUCHDOWN' : 'TARGET';
+    }
+    st.carry = { catchY: p.y, yac: 0, goalY, goalLabel, goalSign };
     st.play.phase = 'live';
     if (st.cm && st.mode === 'catch') st.cm.phase = 'carry';
-    st.stats.last = 'CATCH';
+    st.stats.last = returning ? 'INT' : 'CATCH';
     const ai = (st.ai[p.id] = st.ai[p.id] || {});
     ai.moveDone = false; ai.hurdled = false; ai.pumpT = 0; ai.switchT = -9; ai.tap = null; ai.holdArm = null;
-    const wantPursuer = st.mode === 'catch' ? S.catchPursuer : S.throwPursuer;
-    if (wantPursuer) {
-      const room = goalY - p.y;
-      const gap = clamp(Math.min(S.runDefenderGap * 0.75, room * 0.55), 4, Math.max(4, room - 1));
-      const df = addRunState(newPlayer('df', 'DF', clamp(p.x + (rng.random() - 0.5) * 8, 3, FIELD_W - 3), clamp(p.y + gap, p.y + 3, Math.max(p.y + 3, goalY - 0.4))));
-      df.facing = -Math.PI / 2;
-      st.players.df = df;
+    if (returning) {
+      const wr = st.players.wr;
+      if (wr) {
+        addRunState(wr);
+        st.ai.wr = { ...(st.ai.wr || {}), seen: null, seenT: -9, pumpT: 0, moveDone: false };
+      }
+    } else if (st.players.df && passDefense()) {
+      addRunState(st.players.df);
       st.ai.df = { seen: null, seenT: -9, pumpT: 0 };
-    } else delete st.players.df;
+    } else {
+      const wantPursuer = st.mode === 'catch' ? S.catchPursuer : S.throwPursuer;
+      if (wantPursuer) {
+        const room = goalY - p.y;
+        const gap = clamp(Math.min(S.runDefenderGap * 0.75, room * 0.55), 4, Math.max(4, room - 1));
+        const df = addRunState(newPlayer('df', 'DF', clamp(p.x + (rng.random() - 0.5) * 8, 3, FIELD_W - 3), clamp(p.y + gap, p.y + 3, Math.max(p.y + 3, goalY - 0.4))));
+        df.facing = -Math.PI / 2;
+        st.players.df = df;
+        st.ai.df = { seen: null, seenT: -9, pumpT: 0 };
+      } else delete st.players.df;
+    }
     if (st.mode === 'throw' && S.autoSwitchCarrier && st.controlled !== p.id) st.controlled = p.id;
-    if (p.y >= goalY && p.x >= 0 && p.x <= FIELD_W) {
+    const crossed = goalSign < 0 ? p.y <= goalY : p.y >= goalY;
+    if (crossed && p.x >= 0 && p.x <= FIELD_W) {
       floatText(goalLabel === 'TARGET' ? 'TARGET!' : 'TOUCHDOWN!', p.x, p.y, '#69f0ae');
       endAfterCatch(goalLabel);
     }
@@ -1015,7 +1226,7 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
   }
   function endAfterCatch(result: string) {
     const holder = st.ball.holder ? st.players[st.ball.holder] : st.players.wr;
-    if (st.carry && holder) st.carry.yac = holder.y - st.carry.catchY;
+    if (st.carry && holder) st.carry.yac = (holder.y - st.carry.catchY) * st.carry.goalSign;
     st.stats.lastYac = st.carry ? st.carry.yac : 0;
     st.stats.yacTotal += st.stats.lastYac;
     if (st.mode === 'catch') finishCatchRep(result);
@@ -1024,14 +1235,17 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
   function stepAfterCatch(dt: number, human?: SimInput | null) {
     const humanIn = human || blankInput();
     let holder = st.ball.holder ? st.players[st.ball.holder] : st.players.wr;
-    if (!holder || holder.role === 'DF' || holder.role === 'QB') holder = st.players.wr;
-    const d = st.players.df;
+    if (!holder || holder.role === 'QB') holder = st.players.wr;
+    if (!holder) return;
+    const returning = holder.role === 'DF';
+    const d = returning ? st.players.wr : st.players.df;
     const humanCarrier = st.controlled === holder.id;
     let ci = humanCarrier ? humanIn : aiCarrier(holder, dt);
-    let di = d ? (st.controlled === 'df' ? humanIn : aiDefender(d, dt)) : blankInput();
+    let di = d ? (st.controlled === d.id ? humanIn : aiDefender(d, dt)) : blankInput();
     if (st.play.phase === 'over') { ci = { ...blankInput(), lbHeld: ci.lbHeld, rbHeld: ci.rbHeld }; di = blankInput(); }
     const qb = st.players.qb;
-    if (qb && qb !== holder) updateMovement(qb, humanCarrier || st.mode === 'catch' ? blankInput() : { ...humanIn, a: false, x: false, y: false, b: false, rb: false, rt: false }, dt);
+    const driveQb = st.mode === 'throw' && st.controlled === 'qb' && qb !== holder;
+    if (qb && qb !== holder) updateMovement(qb, driveQb ? { ...humanIn, a: false, x: false, y: false, b: false, rb: false, rt: false } : blankInput(), dt);
     const hb = st.players.hb;
     if (hb && hb !== holder) updateMovement(hb, { ...(st.play.phase === 'live' ? aiPitchBack(hb, holder, -1) : blankInput()), rb: false }, dt);
     advanceCarrier(dt, holder, d, ci, di);
@@ -1067,11 +1281,12 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     }
     ballUpdate(dt);
     pitchCatchCheck(); looseBallCheck();
-    if (st.carry && st.play.phase === 'live') st.carry.yac = c.y - st.carry.catchY;
+    const sign = st.carry?.goalSign ?? 1;
+    if (st.carry && st.play.phase === 'live') st.carry.yac = (c.y - st.carry.catchY) * sign;
     if (st.play.phase === 'live') {
       const b = st.ball;
       const label = st.carry?.goalLabel ?? 'TOUCHDOWN';
-      const crossed = (st.mode === 'run' ? b.y : c.y) >= goalY;
+      const crossed = st.mode === 'run' ? b.y >= goalY : (sign < 0 ? c.y <= goalY : c.y >= goalY);
       if (b.holder === c.id && crossed && c.x >= 0 && c.x <= FIELD_W) {
         floatText(label === 'TARGET' ? 'TARGET!' : 'TOUCHDOWN!', c.x, c.y, '#69f0ae');
         endCarrier(label);
@@ -1098,5 +1313,5 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
   }
 
   reset();
-  return { state: st, step, reset, previewThrow, routeWaypoints, snap, doThrow, setMode, resolveTackle, handPos };
+  return { state: st, step, reset, switchControl, previewThrow, routeWaypoints, snap, doThrow, setMode, resolveTackle, handPos };
 }

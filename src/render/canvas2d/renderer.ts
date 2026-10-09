@@ -43,7 +43,7 @@ export function createCanvasRenderer(S: Settings): FieldRenderer {
       g.fillRect(0, 0, W, H);
       const [fx, fy] = P(0, FIELD_L);
       g.drawImage(field, fx, fy, FIELD_W * scale, FIELD_L * scale);
-      if (st.mode === 'throw') {
+      if (st.mode === 'throw' || st.mode === 'coverage') {
         g.fillStyle = '#40a9ff';
         const [a, b] = P(0, LOS_Y);
         g.fillRect(a, b - 0.15 * scale, FIELD_W * scale, 0.3 * scale);

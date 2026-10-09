@@ -99,9 +99,9 @@ function frame(now: number) {
   if (meta.routeDelta) {
     st.route = ROUTES[(ROUTES.indexOf(st.route as typeof ROUTES[number]) + meta.routeDelta + ROUTES.length) % ROUTES.length];
     sandbox.route = st.route;
-    sim.reset();
+    sim.reset(true);
   }
-  if (meta.route) { st.route = meta.route; sandbox.route = st.route; sim.reset(); }
+  if (meta.route) { st.route = meta.route; sandbox.route = st.route; sim.reset(true); }
   if (meta.toggleRenderer) {
     setRenderer(renderer.name === 'three' ? 'canvas2d' : 'three');
     panel.refresh();
@@ -161,7 +161,7 @@ function frame(now: number) {
 
   let preview = null;
   if (qb && st.controlled === 'qb' && st.ball.holder === 'qb' && inp.charge !== null && reticle) preview = sim.previewThrow(inp.charge, reticle).arc;
-  const route = st.mode === 'throw' && st.controlled === 'qb' && st.play.phase !== 'over' && st.ball.holder === 'qb'
+  const route = (st.mode === 'coverage' || (st.mode === 'throw' && st.controlled === 'qb')) && st.play.phase !== 'over' && st.ball.holder === 'qb'
     ? [{ x: 12, y: LOS_Y - 0.6 }, ...sim.routeWaypoints(st.route)]
     : null;
   for (const p of Object.values(st.players)) {

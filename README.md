@@ -26,9 +26,10 @@ Other scripts:
 
 Cycle with **N** or **D-pad up**, or the Mode dropdown.
 
-- **Throw** — you are the QB or the receiver. Snap, aim, throw, or call for the ball and run a route (`go`, `slant`, `out`, `hitch`, `curl`). A completed catch does not end the play: the receiver becomes the ball carrier and runs at the end zone. An AI pursuer closes after the catch (panel toggle, on by default). If you were the QB, control switches to the receiver (toggle **Auto-switch to receiver after catch**, on by default).
+- **Throw** — you are the QB or the receiver. Snap, aim, throw, or call for the ball and run a route (`go`, `slant`, `out`, `hitch`, `curl`, `post`, `corner`, `comeback`, `dig`). A completed catch does not end the play: the receiver becomes the ball carrier and runs at the end zone. An AI pursuer closes after the catch (panel toggle, on by default). If you were the QB, control switches to the receiver (toggle **Auto-switch to receiver after catch**, on by default). **Throw: add defender** puts the Coverage defender on the field so this mode and Coverage share one play.
 - **1v1 Run** — ball carrier versus one defender, with a trailing back. Truck, spin, juke, sidestep, hurdle, dive, stiff-arm, pitch, and tackle.
 - **Catch** — you are always the receiver. Snap (or call for it) and the QB throws the next ball. Three throws per depth band, then it switches. A catch turns into the same carrier controls, toward a target line 20 yards past the catch or the end zone, whichever is closer. A pursuer is on by default. The next throw waits until that run ends.
+- **Coverage** — 1-on-1 coverage, built on the Throw play. You start as the defender. Back or Tab switches you to the receiver; the other one is AI. A bot quarterback throws when the receiver's separation crosses the threshold, or when the max hold time runs out, leading the receiver with a mix of lobs and bullets. The receiver runs a random route. Outcomes are INCOMPLETE, PBU (bat), INT, CATCH, then yards after the catch until a tackle or a score, plus FLAG if the arm-check is held too long. An interception makes the defender the ball carrier on a return toward the home end zone. The HUD keeps targets, catches allowed, PBUs, INTs, and average separation at the throw.
 
 ## Controls
 
@@ -44,10 +45,11 @@ H hides the on-screen card. A controller with the standard mapping is preferred;
 | Right stick | QB aim spot. On a run, a flick is a move (sidestep, truck, spin, juke) relative to your heading. |
 | RT | QB: throw (soft = loft, hard = bullet). Receiver: one-hand catch. |
 | A | Pre-snap: snap the ball. Live: jump, or hurdle / wrap-up tackle once you are the ball carrier. |
-| Y | Receiver: timed catch. Before the throw: call for the ball. Defender: punch the ball. |
+| Y | Receiver: timed catch. Before the throw: call for the ball. Defender in Coverage: interception if the ball is in the air, otherwise a punch. |
 | RB / X / B | Receiver plant (tap) or stretch (hold), dive, bat. |
 | LB / RB double-tap | Pitch left / right. Flick the right stick to aim it. |
-| Back | Switch the player you control. |
+| LB (hold, Coverage) | Arm-check. Slows a nearby receiver and helps you stay with them. Hold it too long and the play shows FLAG — HOLDING. |
+| Back | Switch the player you control. In Coverage that is defender ⇄ receiver. |
 | Start | Reset the play. As the receiver, Start makes the QB throw now. In Catch mode it pauses throws. |
 | D-pad left / right | Cycle the receiver's route. |
 | D-pad up | Next mode. |
@@ -67,7 +69,7 @@ H hides the on-screen card. A controller with the standard mapping is preferred;
 | X / B | Dive / bat. |
 | Tab | Switch player. |
 | R / Enter | Reset / Start. |
-| `[` `]` or 1–5 | Route. |
+| `[` `]` or 1–9 | Route (`go`, `slant`, `out`, `hitch`, `curl`, `post`, `corner`, `comeback`, `dig`). |
 | M | Toggle 3D and the 2D canvas renderer. |
 | N | Next mode. |
 | P | Pose preview sheet (3D). |
@@ -75,7 +77,9 @@ H hides the on-screen card. A controller with the standard mapping is preferred;
 
 1v1 carrier moves on the keyboard follow the right-stick table: arrows relative to your run (up = truck, down = juke, left/right = sidestep, down+left or down+right = spin). Z and V tap to switch hands, hold to stiff-arm, double-tap to pitch.
 
-Those carrier controls are shared. In Throw and Catch they turn on the moment the catch is completed, and they stay off while the ball is still in the air. The run ends on a tackle, out of bounds, a touchdown or the Catch target line, or a dive that comes up short. Yards after catch show in the HUD (live, last, and total).
+Those carrier controls are shared. In Throw and Catch they turn on the moment the catch is completed, and they stay off while the ball is still in the air. The run ends on a tackle, out of bounds, a touchdown or the Catch target line, or a dive that comes up short. Yards after catch show in the HUD (live, last, and total). Coverage uses the same set after a catch, and again after an interception, with the defender returning the other way.
+
+Coverage defender, before the catch: LT squares up, LB arm-checks, Y plays the ball (interception timing, or a punch if it is still in the quarterback's hands), B bats it down, and A / X tackle only after someone has caught it. The defender can move anywhere before the snap. Press or off coverage, and inside or outside shade, are sliders in the Coverage folder, along with the bot quarterback's separation, max hold, and accuracy, and the AI defender's aggressiveness.
 
 ## Tuning, presets, and files
 
@@ -84,7 +88,7 @@ The **Sandbox settings** panel (lil-gui) is the live tuning UI. Every change is 
 Settings are a versioned document:
 
 ```json
-{ "schemaVersion": 3, "values": { "accel": 30 } }
+{ "schemaVersion": 4, "values": { "accel": 30 } }
 ```
 
 On load, unknown keys are ignored and missing keys are filled from the defaults, including older flat saves from the original one-file prototype. A newer `schemaVersion` still merges the keys this build knows.
@@ -119,7 +123,7 @@ index.html                 page shell and the control card
 src/main.ts                fixed-timestep loop, camera, wiring
 src/config/                constants, default tuning, settings schema + presets
 src/sim/                   simulation only — no DOM, no Three.js
-src/modes/                 mode ids and labels (Throw, 1v1 Run, Catch)
+src/modes/                 mode ids and labels (Throw, 1v1 Run, Catch, Coverage)
 src/input/                 gamepad first, keyboard and mouse fallback
 src/render/three/          Three.js renderer, skinned player, procedural poses
 src/render/canvas2d/       flat canvas renderer

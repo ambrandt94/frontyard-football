@@ -1,12 +1,13 @@
 /** Play modes. Rules live in src/sim so a future server can run the same code. */
 
-export const MODE_IDS = ['throw', 'run', 'catch'] as const;
+export const MODE_IDS = ['throw', 'run', 'catch', 'coverage'] as const;
 export type ModeId = (typeof MODE_IDS)[number];
 
 export const MODE_LABEL: Record<ModeId, string> = {
   throw: 'Throw',
   run: '1v1 Run',
   catch: 'Catch',
+  coverage: 'Coverage',
 };
 
 export const MODE_LABELS = MODE_IDS.map((id) => MODE_LABEL[id]);
@@ -19,5 +20,6 @@ export function nextMode(mode: ModeId): ModeId {
 export function modeFromLabel(label: string): ModeId {
   if (label === '1v1 Run' || label === 'run') return 'run';
   if (label === 'Catch' || label === 'catch') return 'catch';
+  if (label === 'Coverage' || label === 'coverage') return 'coverage';
   return 'throw';
 }

@@ -143,7 +143,7 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
       if (e('Enter')) meta.start = true;
       if (e('BracketRight')) meta.routeDelta = 1;
       if (e('BracketLeft')) meta.routeDelta = -1;
-      ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5'].forEach((c, i) => { if (e(c)) meta.route = ROUTES[i]; });
+      ROUTES.forEach((name, i) => { if (i < 9 && e(`Digit${i + 1}`)) meta.route = name; });
       if (e('KeyM')) meta.toggleRenderer = true;
       if (e('KeyH')) meta.toggleHelp = true;
       if (e('KeyN')) meta.mode = true;
