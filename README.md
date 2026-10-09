@@ -126,11 +126,9 @@ The player is a 24-bone humanoid with a walk clip. Poses (throw, catch, sprint, 
 
 ## GitHub Pages
 
-Pushes to `main` run `.github/workflows/pages.yml`, which builds the site and deploys with `actions/configure-pages`, `actions/upload-pages-artifact`, and `actions/deploy-pages`.
+Pushes to `main` run `.github/workflows/pages.yml`, the only workflow in this repo. It runs `npm run build` (Vite `base` is `/frontyard-football/`), refuses to continue if `dist/index.html` still points at `/src/main.ts`, then uploads **`dist/`** with `actions/upload-pages-artifact` and deploys it with `actions/deploy-pages`.
 
-Vite's `base` is `/frontyard-football/`, and model/texture URLs are prefixed with that base.
-
-The workflow asks `actions/configure-pages` to enable the Pages site on the first run. If that step is rejected, set **Settings → Pages → Build and deployment → Source** to **GitHub Actions** and re-run the workflow.
+**Settings → Pages → Build and deployment → Source** has to stay **GitHub Actions**. GitHub also keeps a managed `pages-build-deployment` workflow. While Source is a branch, that workflow publishes the repository root with Jekyll — the unbuilt `index.html` that loads `/src/main.ts` — and that publish can land after the Vite deploy and replace the game. With Source set to GitHub Actions, only `pages.yml` publishes.
 
 ## Later: multiplayer
 

@@ -29,6 +29,20 @@ jobs:
         run: npm ci
       - name: Build
         run: npm run build
+      - name: Check dist artifact
+        run: |
+          set -euo pipefail
+          test -f dist/index.html
+          test -f dist/assets/player.glb
+          test -f dist/assets/player_basecolor.png
+          test -f dist/assets/player_orm.png
+          grep -E -q 'src="/frontyard-football/assets/[^"]+\.js"' dist/index.html
+          if grep -q '/src/main.ts' dist/index.html; then
+            echo "dist/index.html still references /src/main.ts" >&2
+            exit 1
+          fi
+          echo "Pages artifact is the Vite dist build:"
+          grep -E 'script|stylesheet' dist/index.html
       - name: Setup Pages
         uses: actions/configure-pages@v5
         with:
