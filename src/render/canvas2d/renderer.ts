@@ -47,9 +47,10 @@ export function createCanvasRenderer(S: Settings): FieldRenderer {
         g.fillStyle = '#40a9ff';
         const [a, b] = P(0, LOS_Y);
         g.fillRect(a, b - 0.15 * scale, FIELD_W * scale, 0.3 * scale);
-      } else {
+      }
+      if (st.mode === 'run' || st.carry) {
         g.fillStyle = '#ffd54a';
-        const [a, b] = P(0, 110);
+        const [a, b] = P(0, st.carry?.goalY ?? 110);
         g.fillRect(a, b - 0.22 * scale, FIELD_W * scale, 0.45 * scale);
       }
       const poly = (pts: { x: number; y: number }[] | null | undefined, color: string, w = 2) => {

@@ -204,6 +204,7 @@ export interface CatchRep {
   sideline: boolean;
   t: number;
   result?: string;
+  yac?: number;
 }
 
 export interface CatchModeState {
@@ -216,9 +217,10 @@ export interface CatchModeState {
     streak: number;
     best: number;
     last: string;
+    yacTotal: number;
     bands: Record<string, { a: number; c: number }>;
   };
-  phase: 'wait' | 'windup' | 'air';
+  phase: 'wait' | 'windup' | 'air' | 'carry';
   nextT: number;
   readyT: number;
   windupStart: number;
@@ -227,13 +229,22 @@ export interface CatchModeState {
   cur: CatchRep | null;
 }
 
+/** Live ball-carrier spell after a completion in Throw or Catch mode. */
+export interface CarryState {
+  catchY: number;
+  yac: number;
+  goalY: number;
+  goalLabel: 'TOUCHDOWN' | 'TARGET';
+}
+
 export interface SimState {
   t: number;
   mode: ModeId;
   players: Record<string, Player>;
   ball: Ball;
   play: { phase: string; t0: number; snapT: number | null; endT: number | null; autoDelay?: number; result?: string };
-  stats: { att: number; comp: number; last: string };
+  stats: { att: number; comp: number; last: string; yacTotal: number; lastYac: number };
+  carry: CarryState | null;
   runScore: { td: number; stops: number; last: string };
   feedback: { text: string; color: string; t: number } | null;
   floaters: Floater[];

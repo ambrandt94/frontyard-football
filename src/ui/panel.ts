@@ -16,6 +16,7 @@ import {
   upsertPreset,
   type PresetStore,
 } from '../config/settings';
+import { applyControlPreset, builtinPreset, BUILTIN_PRESETS } from '../config/presets';
 import { MODE_LABEL, MODE_LABELS, modeFromLabel, type ModeId } from '../modes';
 import type { Sim } from '../sim/sim';
 import type { FieldRenderer } from '../render/types';
@@ -94,6 +95,7 @@ export function createPanel(opts: {
       if (name == null) return;
       const trimmed = name.trim();
       if (!trimmed || trimmed === '(none)') { toast('Pick a preset name'); return; }
+      if (builtinPreset(trimmed)) { toast('That name is a built-in preset'); return; }
       if (presets.presets[trimmed] && !window.confirm(`Overwrite preset "${trimmed}"?`)) return;
       presets = upsertPreset(presets, trimmed, S);
       savePresetStore(store, presets);
@@ -101,13 +103,9 @@ export function createPanel(opts: {
       refreshPresetList(trimmed);
       toast(`Saved preset "${trimmed}"`);
     },
-    loadPreset: () => {
-      const next = presetSettings(presets, sandbox.preset);
-      if (!next) { toast('No preset selected'); return; }
-      applySettings(next);
-      toast(`Loaded "${sandbox.preset}"`);
-    },
+    loadPreset: () => { applyNamedPreset(sandbox.preset, true); },
     deletePreset: () => {
+      if (builtinPreset(sandbox.preset)) { toast('Built-in presets stay in the list'); return; }
       if (!presets.presets[sandbox.preset]) { toast('No preset selected'); return; }
       if (!window.confirm(`Delete preset "${sandbox.preset}"?`)) return;
       const name = sandbox.preset;
@@ -163,6 +161,8 @@ export function createPanel(opts: {
   fp.add(sandbox, 'controlling').name('Controlling').listen().disable();
   fp.add(sandbox, 'switchPlayer').name('Switch QB ⇄ WR (Tab / Back)');
   fp.add(sandbox, 'reset').name('Reset play (R / Start)');
+  fp.add(S, 'autoSwitchCarrier').name('Auto-switch to receiver after catch');
+  fp.add(S, 'throwPursuer').name('Throw: pursuer after catch');
 
   const fm = gui.addFolder('Movement');
   fm.add(S, 'accel', 5, 80, 0.5).name('accel (yd/s²)');
@@ -282,6 +282,8 @@ export function createPanel(opts: {
   const fcm = gui.addFolder('Catch mode');
   fcm.add(S, 'catchPaused').name('Pause throws (Start)').listen();
   fcm.add(S, 'catchAIReceiver').name('AI catches (demo)');
+  fcm.add(S, 'catchPursuer').name('Pursuer after catch');
+  fcm.add(S, 'catchTargetYds', 8, 40, 1).name('target line (yd past catch)');
   addSliders(fcm, [
     ['catchShortMin', 3, 30, 0.5, 'Short min (yd)'],
     ['catchShortMax', 5, 40, 0.5, 'Short max (yd)'],
@@ -351,9 +353,13 @@ export function createPanel(opts: {
   fv.add(S, 'renderer', ['three', 'canvas2d']).name('renderer (M)').onChange((v: string) => opts.setRenderer(v === 'canvas2d' ? 'canvas2d' : 'three'));
 
   const fpre = gui.addFolder('Presets');
-  const names = presetNames(presets);
-  sandbox.preset = names[0] || '(none)';
-  const presetCtrl = fpre.add(sandbox, 'preset', names.length ? names : ['(none)']).name('Saved preset');
+  const feel = { line: BUILTIN_PRESETS[0].description };
+  let suppressPreset = false;
+  sandbox.preset = BUILTIN_PRESETS[0].name;
+  const presetCtrl = fpre.add(sandbox, 'preset', presetOptions()).name('Preset').onChange((name: string) => {
+    if (!suppressPreset) applyNamedPreset(name, false);
+  });
+  const feelCtrl = fpre.add(feel, 'line').name('Feel').listen().disable();
   fpre.add(sandbox, 'savePreset').name('Save as…');
   fpre.add(sandbox, 'loadPreset').name('Load');
   fpre.add(sandbox, 'deletePreset').name('Delete');
@@ -366,12 +372,36 @@ export function createPanel(opts: {
   [ft, fc, fv].forEach((f) => f.close());
 
   function refresh() { gui.controllersRecursive().forEach((c) => c.updateDisplay()); }
+  function presetOptions() {
+    const users = presetNames(presets).filter((name) => !builtinPreset(name));
+    return [...BUILTIN_PRESETS.map((p) => p.name), ...users];
+  }
+  function applyNamedPreset(name: string, toastIt: boolean) {
+    const builtin = builtinPreset(name);
+    if (builtin) {
+      applyControlPreset(S, builtin);
+      feel.line = builtin.description;
+      saveSettings(store, S);
+      refresh();
+      if (toastIt) toast(builtin.name);
+      return;
+    }
+    const next = presetSettings(presets, name);
+    if (!next) { toast('No preset selected'); return; }
+    feel.line = 'Saved preset';
+    applySettings(next);
+    if (toastIt) toast(`Loaded "${name}"`);
+  }
   function refreshPresetList(select?: string) {
-    const list = presetNames(presets);
-    const options = list.length ? list : ['(none)'];
-    sandbox.preset = select && list.includes(select) ? select : (list.includes(sandbox.preset) ? sandbox.preset : options[0]);
+    const options = presetOptions();
+    suppressPreset = true;
+    sandbox.preset = select && options.includes(select) ? select : (options.includes(sandbox.preset) ? sandbox.preset : options[0]);
+    const selected = builtinPreset(sandbox.preset);
+    feel.line = selected ? selected.description : (presets.presets[sandbox.preset] ? 'Saved preset' : '');
     presetCtrl.options(options);
     presetCtrl.updateDisplay();
+    feelCtrl.updateDisplay();
+    suppressPreset = false;
   }
   function addSliders(folder: GUI, rows: Array<[keyof Settings, number, number, number, string]>) {
     for (const [key, min, max, step, name] of rows) folder.add(S, key as 'accel', min, max, step).name(name);

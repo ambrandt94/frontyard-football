@@ -272,7 +272,9 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
       camera.lookAt(view.cam.x, 0, -view.cam.y);
       syncSheet(view);
       los.visible = st.mode === 'throw';
-      goal.visible = st.mode === 'run';
+      const goalY = st.carry?.goalY ?? 110;
+      goal.visible = st.mode === 'run' || !!st.carry;
+      goal.position.set(FIELD_W / 2, 0.016, -goalY);
       cue.visible = !!view.cue;
       if (view.cue) {
         const r = 1 + 2.5 * (1 - view.cue.frac);

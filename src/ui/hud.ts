@@ -52,13 +52,17 @@ export function updateHud(opts: {
     const cm = st.cm, cs = cm.stats, [lo, hi] = catchBandRange(S, cm.band);
     const bs = (k: string) => `${cs.bands[k].c}/${cs.bands[k].a}`;
     const n = cm.phase === 'air' ? cm.count : Math.min(cm.count + 1, S.catchThrowsPerBand);
-    const next = S.catchPaused ? 'PAUSED (Start)' : cm.phase === 'windup' ? 'throwing…' : cm.phase === 'air' ? 'ball in the air' : S.requireSnap && !S.catchAIReceiver ? 'press A (or Y to call)' : `in ${Math.max(0, cm.nextT - st.t).toFixed(1)} s`;
+    const next = st.carry ? 'running after the catch' : S.catchPaused ? 'PAUSED (Start)' : cm.phase === 'windup' ? 'throwing…' : cm.phase === 'air' ? 'ball in the air' : S.requireSnap && !S.catchAIReceiver ? 'press A (or Y to call)' : `in ${Math.max(0, cm.nextT - st.t).toFixed(1)} s`;
+    const yacNow = st.carry ? st.carry.yac : cm.cur?.yac;
+    const toLine = st.carry ? Math.max(0, st.carry.goalY - st.players.wr.y) : null;
     stats.innerHTML = `
     <div class="row"><span>Mode</span><b style="color:#80deea">CATCH</b></div>
     <div class="row"><span>Band</span><b>${cm.band.toUpperCase()} ${lo}-${hi} yd — throw ${n}/${S.catchThrowsPerBand}</b></div>
     <div class="row"><span>Catches</span><b>${cs.comp} / ${cs.att}${cs.att ? ' (' + Math.round(cs.comp / cs.att * 100) + '%)' : ''}</b></div>
     <div class="row"><span>Short · Med · Deep</span><b>${bs('short')} · ${bs('medium')} · ${bs('deep')}</b></div>
     <div class="row"><span>Streak</span><b>${cs.streak} (best ${cs.best})</b></div>
+    <div class="row"><span>YAC</span><b>${yacNow == null ? '—' : yacNow.toFixed(1) + ' yd'}${cs.yacTotal ? ' · total ' + cs.yacTotal.toFixed(1) : ''}</b></div>
+    <div class="row"><span>${st.carry?.goalLabel === 'TARGET' ? 'To target' : 'To end zone'}</span><b>${toLine == null ? '—' : toLine.toFixed(1) + ' yd'}</b></div>
     <div class="row"><span>Last result</span><b>${cs.last}</b></div>
     <div class="row"><span>Last throw</span><b>${cm.cur ? (cm.cur.lob ? 'lob ' : 'bullet ') + cm.cur.d.toFixed(1) + ' yd' : '—'}</b></div>
     <div class="row"><span>Next throw</span><b>${next}</b></div>
@@ -87,8 +91,10 @@ export function updateHud(opts: {
     <div class="row"><span>Mode</span><b>THROW</b></div>
     <div class="row"><span>Completions</span><b>${st.stats.comp} / ${st.stats.att}</b></div>
     <div class="row"><span>Last result</span><b>${st.stats.last}</b></div>
-    <div class="row"><span>Controlling</span><b>${st.controlled === 'qb' ? 'QB (red)' : 'WR (blue)'}</b></div>
+    <div class="row"><span>Controlling</span><b>${st.controlled === 'qb' ? 'QB (red)' : st.controlled === 'wr' ? 'WR (blue)' : st.controlled.toUpperCase()}</b></div>
     <div class="row"><span>WR route (AI)</span><b>${st.route}</b></div>
+    <div class="row"><span>YAC</span><b>${st.carry ? st.carry.yac.toFixed(1) + ' yd' : (st.stats.yacTotal ? st.stats.lastYac.toFixed(1) + ' yd' : '—')}</b></div>
+    <div class="row"><span>${st.carry ? (st.carry.goalLabel === 'TARGET' ? 'To target' : 'To end zone') : 'YAC total'}</span><b>${st.carry ? Math.max(0, st.carry.goalY - (st.players[st.ball.holder || 'wr']?.y ?? 0)).toFixed(1) + ' yd' : st.stats.yacTotal.toFixed(1) + ' yd'}</b></div>
     <div class="row"><span>Speed</span><b>${sp.toFixed(1)} yd/s</b></div>
     ${meter}
     <div class="row"><span>State</span><b>${flags}</b></div>

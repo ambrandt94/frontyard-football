@@ -144,6 +144,14 @@ export interface Settings {
   catchSidelineShare: number;
   catchPaused: boolean;
   catchAIReceiver: boolean;
+  /** AI defender closes after a catch in Throw mode. */
+  throwPursuer: boolean;
+  /** AI defender closes after a catch in Catch mode. */
+  catchPursuer: boolean;
+  /** When the QB is controlled and the receiver catches it, switch control to the receiver. */
+  autoSwitchCarrier: boolean;
+  /** Catch mode scores by crossing this many yards past the catch, or the end zone if that is closer. */
+  catchTargetYds: number;
   cameraMinExtent: number;
   cameraPadding: number;
   cameraFollow: number;
@@ -306,6 +314,10 @@ export const DEFAULTS: Settings = {
   catchSidelineShare: 0.2,
   catchPaused: false,
   catchAIReceiver: false,
+  throwPursuer: true,
+  catchPursuer: true,
+  autoSwitchCarrier: true,
+  catchTargetYds: 20,
   cameraMinExtent: 40,
   cameraPadding: 7,
   cameraFollow: 3.0,

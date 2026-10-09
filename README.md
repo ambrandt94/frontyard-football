@@ -26,9 +26,9 @@ Other scripts:
 
 Cycle with **N** or **D-pad up**, or the Mode dropdown.
 
-- **Throw** — you are the QB or the receiver. Snap, aim, throw, or call for the ball and run a route (`go`, `slant`, `out`, `hitch`, `curl`).
+- **Throw** — you are the QB or the receiver. Snap, aim, throw, or call for the ball and run a route (`go`, `slant`, `out`, `hitch`, `curl`). A completed catch does not end the play: the receiver becomes the ball carrier and runs at the end zone. An AI pursuer closes after the catch (panel toggle, on by default). If you were the QB, control switches to the receiver (toggle **Auto-switch to receiver after catch**, on by default).
 - **1v1 Run** — ball carrier versus one defender, with a trailing back. Truck, spin, juke, sidestep, hurdle, dive, stiff-arm, pitch, and tackle.
-- **Catch** — you are always the receiver. Snap (or call for it) and the QB throws the next ball. Three throws per depth band, then it switches.
+- **Catch** — you are always the receiver. Snap (or call for it) and the QB throws the next ball. Three throws per depth band, then it switches. A catch turns into the same carrier controls, toward a target line 20 yards past the catch or the end zone, whichever is closer. A pursuer is on by default. The next throw waits until that run ends.
 
 ## Controls
 
@@ -43,7 +43,7 @@ H hides the on-screen card. A controller with the standard mapping is preferred;
 | LT | Square up / slow down (two-hand catch, or a defender breaking down). |
 | Right stick | QB aim spot. On a run, a flick is a move (sidestep, truck, spin, juke) relative to your heading. |
 | RT | QB: throw (soft = loft, hard = bullet). Receiver: one-hand catch. |
-| A | Pre-snap: snap the ball. Live: jump, or hurdle / wrap-up tackle in 1v1. |
+| A | Pre-snap: snap the ball. Live: jump, or hurdle / wrap-up tackle once you are the ball carrier. |
 | Y | Receiver: timed catch. Before the throw: call for the ball. Defender: punch the ball. |
 | RB / X / B | Receiver plant (tap) or stretch (hold), dive, bat. |
 | LB / RB double-tap | Pitch left / right. Flick the right stick to aim it. |
@@ -75,6 +75,8 @@ H hides the on-screen card. A controller with the standard mapping is preferred;
 
 1v1 carrier moves on the keyboard follow the right-stick table: arrows relative to your run (up = truck, down = juke, left/right = sidestep, down+left or down+right = spin). Z and V tap to switch hands, hold to stiff-arm, double-tap to pitch.
 
+Those carrier controls are shared. In Throw and Catch they turn on the moment the catch is completed, and they stay off while the ball is still in the air. The run ends on a tackle, out of bounds, a touchdown or the Catch target line, or a dive that comes up short. Yards after catch show in the HUD (live, last, and total).
+
 ## Tuning, presets, and files
 
 The **Sandbox settings** panel (lil-gui) is the live tuning UI. Every change is saved to `localStorage` under `tdfb.sandbox.settings.v1`.
@@ -82,14 +84,20 @@ The **Sandbox settings** panel (lil-gui) is the live tuning UI. Every change is 
 Settings are a versioned document:
 
 ```json
-{ "schemaVersion": 2, "values": { "accel": 30 } }
+{ "schemaVersion": 3, "values": { "accel": 30 } }
 ```
 
 On load, unknown keys are ignored and missing keys are filled from the defaults, including older flat saves from the original one-file prototype. A newer `schemaVersion` still merges the keys this build knows.
 
 The **Presets** folder adds:
 
-- **Save as…** / **Load** / **Delete** and a dropdown of named presets (`tdfb.sandbox.presets.v1` in `localStorage`)
+- Five built-in feels in the same dropdown. Picking one applies it immediately and only changes movement, sprint, cut, and carrier-move tuning. They are not saved over and cannot be deleted.
+  - **Default/Balanced** — current values, 10 sprint pumps.
+  - **Arcade Snappy** — very high accel, cuts keep their speed, about 6 pumps to sprint, bigger sidesteps.
+  - **Sim Heavy** — low accel, strong momentum, cuts bleed a lot, 12 pumps to a high top speed, longer move recoveries.
+  - **Elusive Back** — quick sidesteps, strong spins and jukes, short cooldowns, average top speed.
+  - **Power Back** — slower cuts, strong truck and stiff-arm, higher break-tackle odds, a big sprint top that takes about 14 pumps.
+- **Save as…** / **Load** / **Delete** for your own presets (`tdfb.sandbox.presets.v1` in `localStorage`), listed after the built-ins
 - **Export JSON file** and **Import JSON file** (same document shape; a flat object imports too)
 - **Reset to defaults** (also the button at the bottom of the panel)
 - **Copy settings JSON** puts the versioned document on the clipboard

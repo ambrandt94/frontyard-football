@@ -1,5 +1,6 @@
 import './ui/style.css';
 import { DEFAULTS, type Settings } from './config/defaults';
+import { applyControlPreset, BUILTIN_PRESETS } from './config/presets';
 import { browserStore, loadSettings, saveSettings } from './config/settings';
 import { CAM_FOV, FIELD_W, LOS_Y, ROUTES, STEP } from './config/constants';
 import { nextMode, type ModeId } from './modes';
@@ -81,7 +82,8 @@ function frame(now: number) {
     carry = null;
   }
   if (meta.mode) panel.setMode(nextMode(st.mode));
-  if (st.mode === 'catch' && meta.start) {
+  sandbox.controlling = st.controlled.toUpperCase();
+  if (st.mode === 'catch' && meta.start && st.cm?.phase !== 'carry') {
     S.catchPaused = !S.catchPaused;
     toast(S.catchPaused ? 'Throws paused' : 'Throws resumed');
     panel.refresh();
@@ -223,6 +225,11 @@ window.__sandbox = {
   get renderer() { return renderer; },
   get view() { return viewState; },
   setRenderer,
+  builtins: BUILTIN_PRESETS,
+  applyControlPreset: (name: string) => {
+    const preset = BUILTIN_PRESETS.find((p) => p.name === name);
+    if (preset) applyControlPreset(S, preset);
+  },
 };
 
 requestAnimationFrame(frame);
