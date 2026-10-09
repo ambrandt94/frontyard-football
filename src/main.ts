@@ -1,0 +1,228 @@
+import './ui/style.css';
+import { DEFAULTS, type Settings } from './config/defaults';
+import { browserStore, loadSettings, saveSettings } from './config/settings';
+import { CAM_FOV, FIELD_W, LOS_Y, ROUTES, STEP } from './config/constants';
+import { nextMode, type ModeId } from './modes';
+import { clamp, rad } from './sim/math';
+import { createSim } from './sim/sim';
+import type { SimInput } from './sim/types';
+import { createInput } from './input/input';
+import type { PolledInput } from './input/input';
+import { createCanvasRenderer } from './render/canvas2d/renderer';
+import { createThreeRenderer } from './render/three/renderer';
+import { loadPlayerModel, MODEL } from './render/three/model';
+import type { FieldRenderer, ViewState } from './render/types';
+import { updateFloaters, updateHud } from './ui/hud';
+import { createPanel, toast } from './ui/panel';
+
+const S: Settings = loadSettings(browserStore());
+const sim = createSim(S);
+const st = sim.state;
+const viewEl = document.getElementById('view');
+if (!viewEl) throw new Error('missing #view');
+
+loadPlayerModel();
+
+let renderer: FieldRenderer = null!;
+function setRenderer(name: 'three' | 'canvas2d') {
+  if (renderer) renderer.dispose();
+  renderer = name === 'canvas2d' ? createCanvasRenderer(S) : createThreeRenderer(S);
+  renderer.init(viewEl!);
+  S.renderer = renderer.name;
+}
+setRenderer(S.renderer === 'canvas2d' ? 'canvas2d' : 'three');
+
+const panel = createPanel({
+  S,
+  sim,
+  getRenderer: () => renderer,
+  setRenderer,
+});
+const { gui, sandbox } = panel;
+
+addEventListener('resize', () => renderer.resize());
+viewEl.addEventListener('wheel', (e) => {
+  S.cameraMinExtent = clamp(Math.round(S.cameraMinExtent * (e.deltaY > 0 ? 1.08 : 1 / 1.08)), 15, 120);
+  panel.refresh();
+  saveSettings(browserStore(), S);
+}, { passive: true });
+
+const input = createInput(S, viewEl);
+const cam = { x: FIELD_W / 2, y: LOS_Y + 3, ext: DEFAULTS.cameraMinExtent };
+let acc = 0;
+let last = performance.now();
+const hud = {
+  stats: must('stats'),
+  fb: must('feedback'),
+  pad: must('padnote'),
+  power: must('power'),
+  help: must('help'),
+};
+const promptEl = must('prompt');
+const floatEl = must('floaters');
+let viewState: ViewState | null = null;
+let carry: PolledInput | null = null;
+
+function must(id: string): HTMLElement {
+  const el = document.getElementById(id);
+  if (!el) throw new Error('missing #' + id);
+  return el;
+}
+
+function frame(now: number) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  const polled = input.poll();
+  const inp = polled.inp;
+  const meta = polled.meta;
+  if (carry) {
+    for (const k of ['sprint', 'y', 'rt', 'rb', 'a', 'x', 'b', 'start', 'lbHeld', 'rbHeld'] as const) inp[k] = inp[k] || carry[k];
+    if (inp.throwPower === null) inp.throwPower = carry.throwPower;
+    carry = null;
+  }
+  if (meta.mode) panel.setMode(nextMode(st.mode));
+  if (st.mode === 'catch' && meta.start) {
+    S.catchPaused = !S.catchPaused;
+    toast(S.catchPaused ? 'Throws paused' : 'Throws resumed');
+    panel.refresh();
+    meta.start = false;
+    inp.start = false;
+  }
+  if (meta.switch) panel.switchControl();
+  if (meta.reset || (meta.start && !(st.controlled === 'wr' && st.ball.holder === 'qb' && st.play.phase !== 'over'))) {
+    sim.reset();
+    meta.start = false;
+    inp.start = false;
+  }
+  if (meta.routeDelta) {
+    st.route = ROUTES[(ROUTES.indexOf(st.route as typeof ROUTES[number]) + meta.routeDelta + ROUTES.length) % ROUTES.length];
+    sandbox.route = st.route;
+    sim.reset();
+  }
+  if (meta.route) { st.route = meta.route; sandbox.route = st.route; sim.reset(); }
+  if (meta.toggleRenderer) {
+    setRenderer(renderer.name === 'three' ? 'canvas2d' : 'three');
+    panel.refresh();
+    saveSettings(browserStore(), S);
+  }
+  if (meta.toggleHelp) hud.help.classList.toggle('hidden');
+  if (meta.posePreview) sandbox.posePreview = !sandbox.posePreview;
+
+  const qb = st.players.qb;
+  let reticle: { x: number; y: number } | null = null;
+  if (st.mode === 'throw' && st.controlled === 'qb' && qb) {
+    let a: { x: number; y: number };
+    if (inp.aimSpec.mode === 'mouse') {
+      const w = renderer.screenToField(inp.aimSpec.x, inp.aimSpec.y);
+      a = w || { x: qb.x, y: qb.y + 12 };
+    } else a = { x: qb.x + inp.aimSpec.offset.x, y: qb.y + inp.aimSpec.offset.y };
+    const dx = a.x - qb.x, dy = a.y - qb.y, d = Math.hypot(dx, dy);
+    if (d > S.maxAimRange) a = { x: qb.x + dx / d * S.maxAimRange, y: qb.y + dy / d * S.maxAimRange };
+    inp.aim = a;
+    if (st.ball.holder === 'qb') reticle = a;
+  }
+  if (!reticle && st.ball.state === 'air' && st.ball.aimed) reticle = st.ball.aimed;
+
+  acc += dt;
+  let first = true;
+  while (acc >= STEP) {
+    const i: SimInput = first ? inp : { ...inp, sprint: false, y: false, rt: false, rb: false, a: false, x: false, b: false, start: false, throwPower: null };
+    sim.step(STEP, i);
+    first = false;
+    acc -= STEP;
+  }
+  if (first) carry = inp;
+
+  const b = st.ball;
+  const pts: { x: number; y: number }[] = [...Object.values(st.players), { x: b.x, y: b.y }];
+  if (st.mode === 'catch' && st.cm?.cur && b.state === 'air') pts.push(st.cm.cur.tgt);
+  if (st.mode === 'run') {
+    const c = st.players.rb;
+    pts.push({ x: c.x, y: 110 }, { x: c.x, y: 116 });
+  }
+  if (b.state === 'air' && b.landing) pts.push(b.landing);
+  if (reticle) pts.push(reticle);
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const p of pts) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y); }
+  const vw = viewEl!.clientWidth || innerWidth;
+  const vh = viewEl!.clientHeight || innerHeight;
+  const guiW = gui._closed ? 0 : Math.min(vw * 0.5, gui.domElement.getBoundingClientRect().width + 10);
+  const pad = S.cameraPadding;
+  const aspect = (vw - guiW) / vh;
+  const needH = Math.max(S.cameraMinExtent, (y1 - y0) + 2 * pad, ((x1 - x0) + 2 * pad) / aspect);
+  const tx = (x0 + x1) / 2 + (guiW / 2) * (cam.ext / vh);
+  const ty = (y0 + y1) / 2 + 2;
+  const k = 1 - Math.exp(-S.cameraFollow * dt);
+  cam.x += (tx - cam.x) * k;
+  cam.y += (ty - cam.y) * k;
+  cam.ext += (needH - cam.ext) * (needH > cam.ext ? Math.min(1, k * 2.5) : k * 0.6);
+
+  let preview = null;
+  if (qb && st.controlled === 'qb' && st.ball.holder === 'qb' && inp.charge !== null && reticle) preview = sim.previewThrow(inp.charge, reticle).arc;
+  const route = st.mode === 'throw' && st.controlled === 'qb' && st.play.phase !== 'over' && st.ball.holder === 'qb'
+    ? [{ x: 12, y: LOS_Y - 0.6 }, ...sim.routeWaypoints(st.route)]
+    : null;
+  for (const p of Object.values(st.players)) {
+    const h = sim.handPos(p);
+    p.handX = h.x;
+    p.handY = h.y;
+  }
+  const cmw = st.mode === 'catch' && st.cm?.phase === 'windup' ? st.cm : null;
+  viewState = {
+    cue: cmw && qb ? { x: qb.x, y: qb.y, frac: clamp((st.t - cmw.windupStart) / Math.max(0.01, cmw.windupEnd - cmw.windupStart), 0, 1) } : null,
+    trails: updateTrails(),
+    cam: { x: cam.x, y: cam.y, h: cam.ext / (2 * Math.tan(rad(CAM_FOV / 2))), ext: cam.ext },
+    reticle,
+    preview,
+    route,
+    showReach: S.showReach,
+    showArc: S.showArc,
+    qbCharge: inp.charge,
+    poseSheet: sandbox.posePreview && renderer.name === 'three',
+  };
+  renderer.sync(st, viewState);
+  renderer.render();
+  updateHud({ st, S, inp, input, rendererName: renderer.name, stats: hud.stats, fb: hud.fb, pad: hud.pad, power: hud.power, prompt: promptEl });
+  updateFloaters({ st, renderer, poseSheet: !!viewState.poseSheet, floatEl });
+  requestAnimationFrame(frame);
+}
+
+const trailBuf: Record<string, { x: number; y: number; t: number }[]> = {};
+let trailKey = '';
+function updateTrails() {
+  const key = st.mode + ':' + st.play.t0 + ':' + (st.swapCount || 0);
+  if (key !== trailKey) {
+    trailKey = key;
+    for (const k of Object.keys(trailBuf)) delete trailBuf[k];
+  }
+  const out: { pts: { x: number; y: number }[]; color: number }[] = [];
+  for (const id in st.players) {
+    const p = st.players[id];
+    if (p.role === 'QB' || p.role === 'DF') continue;
+    const buf = trailBuf[id] || (trailBuf[id] = []);
+    const lastP = buf[buf.length - 1];
+    if (!lastP || Math.hypot(p.x - lastP.x, p.y - lastP.y) > 0.15) buf.push({ x: p.x, y: p.y, t: st.t });
+    while (buf.length && st.t - buf[0].t > 2.5) buf.shift();
+    if (buf.length > 1) out.push({ pts: buf, color: p.role === 'RB' ? 0xffe082 : p.role === 'TB' ? 0xffcc80 : 0x90caf9 });
+  }
+  return out;
+}
+
+declare global {
+  interface Window {
+    __sandbox?: unknown;
+  }
+}
+window.__sandbox = {
+  MODEL,
+  sim,
+  state: st,
+  S,
+  DEFAULTS,
+  setMode: (m: ModeId) => panel.setMode(m),
+  get renderer() { return renderer; },
+  get view() { return viewState; },
+  setRenderer,
+};
+
+requestAnimationFrame(frame);
