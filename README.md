@@ -130,7 +130,7 @@ Pushes to `main` run `.github/workflows/pages.yml`, which builds the site and de
 
 Vite's `base` is `/frontyard-football/`, and model/texture URLs are prefixed with that base.
 
-The repo owner has to set **Settings → Pages → Build and deployment → Source** to **GitHub Actions** before the first deploy can succeed.
+The workflow asks `actions/configure-pages` to enable the Pages site on the first run. If that step is rejected, set **Settings → Pages → Build and deployment → Source** to **GitHub Actions** and re-run the workflow.
 
 ## Later: multiplayer
 
