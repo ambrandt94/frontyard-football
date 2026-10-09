@@ -278,14 +278,21 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
       st.cov.targets++; st.cov.throws++; st.cov.sepSum += sep; st.cov.lastSep = sep;
     }
   }
-  function leadReceiver(power: number): Vec2 {
-    const qb = st.players.qb, r = st.players.wr;
-    let tf = 0.8;
-    let tgt = { x: r.x, y: r.y };
-    for (let i = 0; i < 5; i++) {
-      tgt = { x: clamp(r.x + r.vx * tf, 1, FIELD_W - 1), y: clamp(r.y + r.vy * tf, 0, FIELD_L) };
-      const sol = solveThrow(releasePoint(qb), tgt, power, 1);
-      tf = flightTimeTo(RELEASE_H, sol.vz, CATCH_H);
+  /**
+   * Where `wr` will be when a pass thrown now arrives.
+   * Two solves: the first flight time leads the receiver, the second matches that new spot.
+   * Throw, Coverage, and Catch all use this — Catch only afterwards keeps the throw inside its distance band.
+   */
+  function leadReceiver(power: number, wr: Player = st.players.wr): Vec2 {
+    const from = releasePoint(st.players.qb);
+    let tf = 0.75;
+    let tgt = { x: wr.x, y: wr.y };
+    for (let i = 0; i < 2; i++) {
+      tgt = {
+        x: clamp(wr.x + wr.vx * tf, 0.6, FIELD_W - 0.6),
+        y: clamp(wr.y + wr.vy * tf, 0.6, FIELD_L - 0.6),
+      };
+      tf = flightTimeTo(from.z, solveThrow(from, tgt, power, 1).vz, CATCH_H);
     }
     return tgt;
   }
@@ -301,12 +308,7 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
   }
   function flightTimeTo(h0: number, vz: number, h1: number) { const disc = vz * vz + 2 * GRAV * (h0 - h1); return disc < 0 ? 1 : (vz + Math.sqrt(disc)) / GRAV; }
   function aiQBThrow() {
-    const qb = st.players.qb, r = st.players.wr; let tf = 1, tgt = { x: r.x, y: r.y };
-    for (let i = 0; i < 5; i++) {
-      tgt = { x: clamp(r.x + r.vx * tf, 1, FIELD_W - 1), y: clamp(r.y + r.vy * tf, 0, FIELD_L) };
-      const sol = solveThrow(releasePoint(qb), tgt, 0.55, 1); tf = flightTimeTo(RELEASE_H, sol.vz, CATCH_H);
-    }
-    doThrow(tgt, 0.55, true);
+    doThrow(leadReceiver(0.55), 0.55, true);
   }
 
   function handPos(p: Player): Vec2 {
@@ -625,44 +627,103 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     Object.assign(st.cm, { phase: 'wait', nextT: st.t + 1, readyT: st.t + 0.3, windupStart: 0, windupEnd: 0, plan: null, cur: null });
     say('CATCH MODE', '#9fe39f'); holdBall();
   }
+  /** Unit heading the receiver is running, or the way they are facing. Downfield (+y) if neither is set. */
+  function forwardDir(w: Player): Vec2 {
+    const sp = Math.hypot(w.vx, w.vy);
+    if (sp > 0.75) return { x: w.vx / sp, y: w.vy / sp };
+    const fx = Math.cos(w.facing), fy = Math.sin(w.facing);
+    if (Math.hypot(fx, fy) > 0.5) return { x: fx, y: fy };
+    return { x: 0, y: 1 };
+  }
   function beginCatchWindup(dur: number, called: boolean) {
     const cm = st.cm, qb = st.players.qb, w = st.players.wr, b = st.ball;
     if (!cm) return;
     const [lo, hi] = bandRange(cm.band), maxR = 0.95 * S.maxThrowSpeed * S.maxThrowSpeed / GRAV;
     const d = Math.min(lo + rng.random() * (hi - lo), maxR);
     const lob = rng.random() < S.catchLobShare;
-    const px = w.x + w.vx * (dur + 0.8), py = w.y + w.vy * (dur + 0.8);
-    let a = (rng.random() - 0.5) * rad(60);
-    const qx = clamp(px - d * Math.sin(a), 3, FIELD_W - 3); a = Math.asin(clamp((px - qx) / d, -1, 1));
-    const qy = clamp(py - d * Math.cos(a), 1, FIELD_L - 1);
-    Object.assign(qb, { x: qx, y: qy, vx: 0, vy: 0 }); qb.facing = Math.atan2(py - qy, px - qx);
+    const power = lob ? 0.12 + rng.random() * 0.2 : 0.8 + rng.random() * 0.2;
+    const h = forwardDir(w);
+    const jitter = (rng.random() - 0.5) * rad(36);
+    const hx = h.x * Math.cos(jitter) - h.y * Math.sin(jitter);
+    const hy = h.x * Math.sin(jitter) + h.y * Math.cos(jitter);
+    // Flight time for a pass of this length, so the QB stands behind where the ball should arrive.
+    const probe = solveThrow({ x: w.x - hx * d, y: w.y - hy * d, z: RELEASE_H }, { x: w.x, y: w.y }, power, 1);
+    const tf = flightTimeTo(RELEASE_H, probe.vz, CATCH_H);
+    const look = dur + Math.min(tf, 2.4);
+    const moving = Math.hypot(w.vx, w.vy) > 0.75;
+    const px = clamp(w.x + (moving ? w.vx : 0) * look, 2, FIELD_W - 2);
+    const py = clamp(w.y + (moving ? w.vy : 0) * look, 2, FIELD_L - 2);
+    const qx = clamp(px - hx * d, 2, FIELD_W - 2);
+    const qy = clamp(py - hy * d, 1.5, FIELD_L - 1.5);
+    Object.assign(qb, { x: qx, y: qy, vx: 0, vy: 0 });
+    qb.facing = Math.atan2(py - qy, px - qx);
     Object.assign(b, { state: 'held', holder: 'qb', arc: [], landing: null, aimed: null, resolved: false, gave: false }); holdBall();
-    cm.plan = { d, lob, power: lob ? rng.random() * 0.2 : 0.8 + rng.random() * 0.2, sideline: rng.random() < S.catchSidelineShare, called: !!called };
+    cm.plan = { d, lob, power, sideline: rng.random() < S.catchSidelineShare, called: !!called };
     cm.phase = 'windup'; cm.windupStart = st.t; cm.windupEnd = st.t + dur;
   }
-  function onBand(qb: Player, base: Vec2, d: number, sideline: boolean): Vec2 {
-    const dx = base.x - qb.x, dy = base.y - qb.y; const m = Math.hypot(dx, dy) || 1;
-    let tx = qb.x + dx / m * d;
-    if (sideline) tx = tx < FIELD_W / 2 ? 0.5 + rng.random() * 0.8 : FIELD_W - 0.5 - rng.random() * 0.8;
-    tx = clamp(tx, 0.4, FIELD_W - 0.4);
-    tx = clamp(tx, qb.x - d * 0.98, qb.x + d * 0.98);
-    const ty = qb.y + Math.sqrt(Math.max(0, d * d - (tx - qb.x) ** 2)) * (dy >= -0.01 || qb.y > FIELD_L - 5 ? 1 : -1);
-    return { x: tx, y: Math.min(ty, FIELD_L - 0.5) };
+  /** Left, right, or ahead of the facing — never back toward the line, and never behind downfield unless they are facing that way. */
+  function stationaryCatchSpot(w: Player): Vec2 {
+    const f = forwardDir(w);
+    const o = 3 + rng.random() * 4;
+    const roll = rng.random();
+    const side = roll < 0.5 ? -1 : 1;
+    const candidates: Vec2[] = [
+      { x: f.x * o, y: f.y * o },
+      { x: -f.y * side * o + f.x * 0.8, y: f.x * side * o + f.y * 0.8 },
+      { x: f.y * side * o + f.x * 0.8, y: -f.x * side * o + f.y * 0.8 },
+    ];
+    const usable = candidates.filter((p) => {
+      const facing = p.x * f.x + p.y * f.y;
+      const downfield = f.y < -0.35 || p.y >= -0.3;
+      return facing >= -0.05 && downfield;
+    });
+    const pool = usable.length ? usable : [candidates[0]];
+    const off = pool[Math.floor(rng.random() * pool.length)];
+    return { x: clamp(w.x + off.x, 1, FIELD_W - 1), y: clamp(w.y + off.y, 1, FIELD_L - 1) };
+  }
+  /**
+   * Keep the planned band distance by sliding along the QB → aim ray.
+   * The ray is never mirrored: a negative `dy` stays behind the QB, which is in front of a receiver coming back.
+   */
+  function placeOnBand(qb: Player, wr: Player, aim: Vec2, dist: number, sideline: boolean): Vec2 {
+    const fwd = forwardDir(wr);
+    let dx = aim.x - qb.x, dy = aim.y - qb.y;
+    let m = Math.hypot(dx, dy);
+    if (m < 0.35 || dx * fwd.x + dy * fwd.y < 0) { dx = fwd.x; dy = fwd.y; m = 1; }
+    let x = qb.x + dx / m * dist;
+    let y = qb.y + dy / m * dist;
+    if (sideline) {
+      // Toe-tap only when the pass is already heading at a sideline. A vertical route in the middle stays on the lead.
+      const towardLeft = aim.x < 8 || (fwd.x < -0.45 && wr.x < 18);
+      const towardRight = aim.x > FIELD_W - 8 || (fwd.x > 0.45 && wr.x > FIELD_W - 18);
+      if (towardLeft || towardRight) {
+        const edge = towardLeft ? 0.55 + rng.random() * 0.7 : FIELD_W - 0.55 - rng.random() * 0.7;
+        const sx = edge;
+        const sy = y;
+        const ahead = (sx - wr.x) * fwd.x + (sy - wr.y) * fwd.y;
+        if (ahead > 0.4 && Math.abs(sx - wr.x) < 10) { x = sx; y = sy; }
+      }
+    }
+    x = clamp(x, 0.5, FIELD_W - 0.5);
+    y = clamp(y, 0.5, FIELD_L - 0.5);
+    const along = (x - wr.x) * fwd.x + (y - wr.y) * fwd.y;
+    const leadAlong = (aim.x - wr.x) * fwd.x + (aim.y - wr.y) * fwd.y;
+    if (along < 0.5) {
+      return { x: clamp(aim.x, 0.5, FIELD_W - 0.5), y: clamp(aim.y, 0.5, FIELD_L - 0.5) };
+    }
+    // Don't sail it past the spot the receiver can actually run to.
+    if (leadAlong > 0.5 && along > leadAlong + 4) {
+      return { x: clamp(aim.x, 0.5, FIELD_W - 0.5), y: clamp(aim.y, 0.5, FIELD_L - 0.5) };
+    }
+    return { x, y };
   }
   function releaseCatchThrow() {
     const cm = st.cm, qb = st.players.qb, w = st.players.wr;
     if (!cm || !cm.plan) return;
-    const pl = cm.plan, from = releasePoint(qb);
-    const sp = Math.hypot(w.vx, w.vy); let tgt: Vec2;
-    if (sp > 1) {
-      let tf = 1;
-      tgt = { x: w.x, y: w.y };
-      for (let i = 0; i < 6; i++) { tgt = onBand(qb, { x: w.x + w.vx * tf, y: w.y + w.vy * tf }, pl.d, pl.sideline); tf = flightTimeTo(from.z, solveThrow(from, tgt, pl.power, 1).vz, CATCH_H); }
-    } else {
-      const r = rng.random(), o = 3 + rng.random() * 4;
-      const base = r < 0.33 ? { x: w.x - o, y: w.y } : r < 0.66 ? { x: w.x + o, y: w.y } : { x: w.x, y: w.y + o };
-      tgt = onBand(qb, base, pl.d, pl.sideline);
-    }
+    const pl = cm.plan;
+    const sp = Math.hypot(w.vx, w.vy);
+    const aim = sp > 1 ? leadReceiver(pl.power, w) : stationaryCatchSpot(w);
+    const tgt = placeOnBand(qb, w, aim, pl.d, pl.sideline);
     st.stats.last = '—'; st.play.phase = 'live';
     doThrow(tgt, pl.power, false);
     const b = st.ball;
