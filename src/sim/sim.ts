@@ -3,7 +3,7 @@
  * Time is seconds, space is yards. Pass a fixed dt (the app uses 1/120).
  */
 import { catchBandRange, type Settings } from '../config/defaults';
-import { CATCH_H, FIELD_L, FIELD_W, GOAL_Y, GRAV, HOME_Y, JOG_TILT, LOS_Y, RELEASE_H, ROUTES } from '../config/constants';
+import { CATCH_H, FIELD_L, FIELD_W, GOAL_Y, GRAV, HOME_Y, JOG_TILT, LOS_Y, RELEASE_H, ROUTES, routeDef } from '../config/constants';
 import type { ModeId } from '../modes';
 import { approachAngle, clamp, gauss as gaussOf, lerp, lowAngle, rad, speedForAngle, wrapAngle } from './math';
 import { defaultRng, type Rng } from './rng';
@@ -147,23 +147,16 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
   }
 
   function routeWaypoints(name: string): Vec2[] {
-    const sx = 12, sy = LOS_Y - 0.6, inn = 1;
-    const P = (dx: number, dy: number) => ({ x: sx + dx * inn, y: sy + dy });
-    switch (name) {
-      case 'go': return [P(0, 50)];
-      case 'slant': return [P(0, 3), P(10, 12), P(26, 28)];
-      case 'out': return [P(0, 10), P(-9.5, 10)];
-      case 'hitch': return [P(0, 6), P(0, 5)];
-      case 'curl': return [P(0, 12), P(2.5, 10)];
-      case 'post': return [P(0, 12), P(14, 28)];
-      case 'corner': return [P(0, 10), P(-8, 26)];
-      case 'comeback': return [P(0, 18), P(0, 12)];
-      case 'dig': return [P(0, 10), P(16, 10)];
-    }
-    return [P(0, 20)];
+    const sx = 12, sy = LOS_Y - 0.6;
+    return routeDef(name).points.map((p) => ({ x: sx + p.x, y: sy + p.y }));
   }
 
-  function snap() { if (st.play.phase === 'pre') { st.play.phase = 'live'; st.play.snapT = st.t; st.ai.wr.wp = routeWaypoints(st.route); st.ai.wr.wpi = 0; say('HIKE', '#9fe39f'); } }
+  function snap() {
+    if (st.play.phase !== 'pre') return;
+    st.play.phase = 'live'; st.play.snapT = st.t; st.ai.wr.wp = routeWaypoints(st.route); st.ai.wr.wpi = 0;
+    if (st.ai.qb) { st.ai.qb.holdMin = undefined; st.ai.qb.readyAt = undefined; st.ai.qb.clockRoute = undefined; }
+    say('HIKE', '#9fe39f');
+  }
   function endPlay(result: string) { if (st.play.phase !== 'over') { st.play.phase = 'over'; st.play.endT = st.t; st.play.result = result; } st.stats.last = result; }
 
   function holdBall() {
@@ -355,15 +348,53 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     }
     return tgt;
   }
+  function ensureThrowClock() {
+    const qb = (st.ai.qb = st.ai.qb || {});
+    if (qb.holdMin != null && qb.clockRoute === st.route) return;
+    const def = routeDef(st.route);
+    const mult = clamp(S.covMinHold, 0.25, 2);
+    const lo = def.minHold[0] * mult;
+    const hi = Math.max(lo, def.minHold[1] * mult);
+    qb.holdMin = lo + rng.random() * (hi - lo);
+    qb.holdMax = Math.max(S.covMaxHold * (0.92 + rng.random() * 0.16), qb.holdMin + 0.2);
+    qb.releaseLag = rng.random() * 0.18;
+    qb.readyAt = undefined;
+    qb.clockRoute = st.route;
+  }
+  function receiverAtThrowPoint(wr: Player): boolean {
+    const def = routeDef(st.route);
+    const pt = st.ai.wr?.wp?.[def.throwAt];
+    if (!pt) return false;
+    if ((st.ai.wr?.wpi || 0) > def.throwAt) return true;
+    return Math.hypot(wr.x - pt.x, wr.y - pt.y) < 1.7;
+  }
+  /** Coverage, and Throw mode when a human is playing the defender. The clock is per route. */
   function maybeThrowCoverage() {
-    if (st.mode !== 'coverage') return;
     const b = st.ball;
-    if (b.holder !== 'qb' || st.play.phase !== 'live' || st.play.snapT == null || !st.players.df) return;
-    const sep = Math.hypot(st.players.wr.x - st.players.df.x, st.players.wr.y - st.players.df.y);
-    if (sep < S.covSep && st.t - st.play.snapT < S.covMaxHold) return;
+    if (b.holder !== 'qb' || st.play.phase !== 'live' || st.play.snapT == null || !st.players.df || !st.players.wr) return;
+    ensureThrowClock();
+    const qb = st.ai.qb;
+    const elapsed = st.t - st.play.snapT;
+    if (elapsed < (qb.holdMin || 0)) return;
+    const wr = st.players.wr, df = st.players.df;
+    const sep = Math.hypot(wr.x - df.x, wr.y - df.y);
+    const open = sep >= S.covSep;
+    const tight = sep < Math.min(S.covSep, 1.6);
+    const forced = elapsed >= (qb.holdMax || S.covMaxHold);
+    const release = forced || open || (receiverAtThrowPoint(wr) && !tight);
+    if (!release) { qb.readyAt = undefined; return; }
+    if (qb.readyAt == null) qb.readyAt = st.t;
+    if (st.t < qb.readyAt + (qb.releaseLag || 0)) return;
+    const err = lerp(2.2, 0.35, clamp(S.covAccuracy, 0, 1));
+    if (forced && tight) {
+      const side = df.x > FIELD_W / 2 ? -3 : FIELD_W + 3;
+      const y = clamp(wr.y + 6 + (rng.random() - 0.5) * 4, 4, FIELD_L - 4);
+      doThrow({ x: side, y }, 0.42, true, err);
+      return;
+    }
     const lob = rng.random() < 0.45;
     const power = lob ? 0.15 + rng.random() * 0.2 : 0.75 + rng.random() * 0.25;
-    doThrow(leadReceiver(power), power, true, lerp(2.2, 0.35, clamp(S.covAccuracy, 0, 1)));
+    doThrow(leadReceiver(power), power, true, err);
   }
   function flightTimeTo(h0: number, vz: number, h1: number) { const disc = vz * vz + 2 * GRAV * (h0 - h1); return disc < 0 ? 1 : (vz + Math.sqrt(disc)) / GRAV; }
   function aiQBThrow() {
@@ -564,7 +595,7 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
 
     if (st.ball.holder === 'qb') {
       if (qbIsHuman() && inputs.qb.throwPower !== null) doThrow(st.aimQB || { x: qb.x, y: qb.y + 12 }, inputs.qb.throwPower, true);
-      else if (!qbIsHuman() && st.mode === 'coverage') maybeThrowCoverage();
+      else if (!qbIsHuman() && (st.mode === 'coverage' || (st.mode === 'throw' && S.throwDefender && !wrIsHuman()))) maybeThrowCoverage();
       else if (!qbIsHuman() && st.mode === 'throw' && st.play.phase === 'live' && st.play.snapT != null && ((wrIsHuman() && inputs.wr.start) || st.t - st.play.snapT > S.autoThrowDelay || (st.callAt != null && st.t >= st.callAt))) aiQBThrow();
     }
     const wi = inputs.wr, w = st.players.wr;
@@ -1506,7 +1537,7 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
       const p = newPlayer(id, 'WR', cx + Math.cos(ang) * 8, cy + Math.sin(ang) * 6);
       p.facing = Math.atan2(cy - p.y, cx - p.x);
       st.players[id] = p;
-      st.ai[id] = { pumpT: 0, pressAt: st.t + 1.2 };
+      st.ai[id] = { pumpT: 0, pressAt: st.t + 0.7 + rng.random() * 0.45, heyAt: st.t + 1.2 + i * 0.7 };
     }
     st.ball = { state: 'held', holder: 'p0', x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, arc: [], landing: null, aimed: null, throwT: 0, resolved: false, gave: false, power: 0 };
     st.play = { phase: 'live', t0: st.t, snapT: st.t, endT: null };
@@ -1515,41 +1546,165 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     say('THROW AROUND', '#9fe39f');
     holdBall();
   }
-  function aiFree(p: Player): SimInput {
+  /** Teammates stay about 6–8 yards apart. The ring around the ball is the spacing sliders. */
+  function freeMateGap() { return clamp(S.freeSpaceMin * 0.8, 6, 8); }
+  function freeAnchor(): Vec2 {
+    const b = st.ball;
+    if (b.state === 'held' && b.holder && st.players[b.holder]) {
+      const h = st.players[b.holder];
+      return { x: h.x, y: h.y };
+    }
+    let x = 0, y = 0, n = 0;
+    for (const o of Object.values(st.players)) { x += o.x; y += o.y; n++; }
+    return n ? { x: x / n, y: y / n } : { x: FIELD_W / 2, y: FIELD_L / 2 };
+  }
+  /** The one player the pass was aimed at, or the nearest body to a loose ball. */
+  function freeChaser(): string | null {
+    const b = st.ball;
+    if (b.state !== 'air' && b.state !== 'dead' && b.state !== 'rest') return null;
+    const tgt = b.state === 'air' ? (b.aimed || b.landing || { x: b.x, y: b.y }) : { x: b.x, y: b.y };
+    let best: string | null = null;
+    let bestD = Infinity;
+    for (const o of Object.values(st.players)) {
+      const d = Math.hypot(o.x - tgt.x, o.y - tgt.y);
+      if (d < bestD) { bestD = d; best = o.id; }
+    }
+    return best;
+  }
+  function pickOpenMate(thrower: Player): Player | undefined {
+    const mates = Object.values(st.players).filter((o) => o.id !== thrower.id);
+    const gap = freeMateGap();
+    const ring = (S.freeSpaceMin + Math.max(S.freeSpaceMin + 2, S.freeSpaceMax)) / 2;
+    let best: Player | undefined;
+    let bestScore = -1e9;
+    for (const m of mates) {
+      const d = Math.hypot(m.x - thrower.x, m.y - thrower.y);
+      let nearest = 99;
+      for (const o of mates) {
+        if (o.id === m.id) continue;
+        nearest = Math.min(nearest, Math.hypot(o.x - m.x, o.y - m.y));
+      }
+      let score = Math.min(nearest, 18) - Math.abs(d - ring) * 0.35;
+      if (d < gap) score -= (gap - d) * 1.5;
+      if (d > S.freeSpaceMax + 8) score -= d * 0.15;
+      if (m.callT != null && st.t - m.callT < 2.2) score += 3.5;
+      score += rng.random() * 1.2;
+      if (score > bestScore) { bestScore = score; best = m; }
+    }
+    return best;
+  }
+  function pickFreeSpot(p: Player, anchor: Vec2): Vec2 {
+    const ai = st.ai[p.id] || {};
+    const minR = Math.max(2, S.freeSpaceMin);
+    const maxR = Math.max(minR + 2, S.freeSpaceMax);
+    const gap = freeMateGap();
+    if (ai.spot && st.t < (ai.spotT || 0)) return ai.spot;
+    let best = { x: clamp(p.x, 3, FIELD_W - 3), y: clamp(p.y, 3, FIELD_L - 3) };
+    let bestScore = -1e9;
+    for (let k = 0; k < 10; k++) {
+      const ang = rng.random() * Math.PI * 2;
+      const rads = minR + rng.random() * (maxR - minR);
+      const x = clamp(anchor.x + Math.cos(ang) * rads, 3, FIELD_W - 3);
+      const y = clamp(anchor.y + Math.sin(ang) * rads, 3, FIELD_L - 3);
+      const dh = Math.hypot(x - anchor.x, y - anchor.y);
+      let score = -Math.abs(dh - (minR + maxR) / 2) * 0.2;
+      for (const o of Object.values(st.players)) {
+        if (o.id === p.id) continue;
+        const os = st.ai[o.id]?.spot;
+        const ox = os?.x ?? o.x, oy = os?.y ?? o.y;
+        const d = Math.hypot(x - ox, y - oy);
+        if (d < gap) score -= (gap - d) * 5;
+        else score += Math.min(d, 16) * 0.15;
+      }
+      if (score > bestScore) { bestScore = score; best = { x, y }; }
+    }
+    ai.spot = best;
+    ai.spotT = st.t + Math.max(0.8, S.freeRepick) * (0.8 + rng.random() * 0.4);
+    st.ai[p.id] = ai;
+    return best;
+  }
+  function freeSteer(p: Player, tx: number, ty: number, anchor: Vec2): SimInput {
     const inp = blankInput();
+    let sx = tx - p.x, sy = ty - p.y;
+    const gap = freeMateGap();
+    const minR = Math.max(2, S.freeSpaceMin);
+    const maxR = Math.max(minR + 2, S.freeSpaceMax);
+    for (const o of Object.values(st.players)) {
+      if (o.id === p.id) continue;
+      const dx = p.x - o.x, dy = p.y - o.y, d = Math.hypot(dx, dy) || 0.001;
+      if (d < gap) {
+        const push = (gap - d) / gap;
+        sx += (dx / d) * push * 14;
+        sy += (dy / d) * push * 14;
+      }
+    }
+    const dx = p.x - anchor.x, dy = p.y - anchor.y, dh = Math.hypot(dx, dy) || 0.001;
+    if (dh < minR) {
+      const push = (minR - dh) / minR;
+      sx += (dx / dh) * push * 16;
+      sy += (dy / dh) * push * 16;
+    } else if (dh > maxR) {
+      sx += (anchor.x - p.x) / dh * 8;
+      sy += (anchor.y - p.y) / dh * 8;
+    }
+    const margin = 4;
+    if (p.x < margin) sx += (margin - p.x);
+    if (p.x > FIELD_W - margin) sx -= p.x - (FIELD_W - margin);
+    if (p.y < margin) sy += (margin - p.y);
+    if (p.y > FIELD_L - margin) sy -= p.y - (FIELD_L - margin);
+    const m = Math.hypot(sx, sy);
+    if (m > 0.35) {
+      const mag = m < 2.5 ? clamp(m / 4, 0.28, 0.62) : 0.78;
+      inp.mx = (sx / m) * mag;
+      inp.my = (sy / m) * mag;
+    }
+    return inp;
+  }
+  function aiFree(p: Player): SimInput {
     const b = st.ball;
     const ai = (st.ai[p.id] = st.ai[p.id] || { pumpT: 0 });
     if (b.holder === p.id) {
-      if (st.t < (ai.pressAt || 0)) { inp.lt = true; return inp; }
-      const mates = Object.values(st.players).filter((o) => o.id !== p.id);
-      if (!mates.length) return inp;
-      const mate = mates[Math.floor(rng.random() * mates.length)];
-      inp.aim = { x: clamp(mate.x + mate.vx * 0.35, 1, FIELD_W - 1), y: clamp(mate.y + mate.vy * 0.35, 1, FIELD_L - 1) };
-      inp.throwPower = 0.5;
-      ai.pressAt = st.t + 1.6;
+      const open = pickOpenMate(p);
+      if (open) ai.look = { x: open.x, y: open.y };
+      if (st.t < (ai.pressAt || 0)) {
+        const inp = blankInput();
+        inp.lt = true;
+        return inp;
+      }
+      if (!open) return blankInput();
+      const inp = blankInput();
+      const lead = 0.3;
+      inp.aim = {
+        x: clamp(open.x + open.vx * lead, 1, FIELD_W - 1),
+        y: clamp(open.y + open.vy * lead, 1, FIELD_L - 1),
+      };
+      const dist = Math.hypot(open.x - p.x, open.y - p.y);
+      inp.throwPower = clamp(0.32 + dist / 40, 0.35, 0.72);
+      ai.pressAt = st.t + 1.3;
       return inp;
     }
-    if (b.state === 'air' && b.landing) {
-      const dx = b.landing.x - p.x, dy = b.landing.y - p.y, d = Math.hypot(dx, dy);
+    const chaser = freeChaser();
+    if ((b.state === 'air' || b.state === 'dead' || b.state === 'rest') && chaser === p.id) {
+      const dest = b.state === 'air' && b.landing ? b.landing : { x: b.x, y: b.y };
+      const inp = blankInput();
+      const dx = dest.x - p.x, dy = dest.y - p.y, d = Math.hypot(dx, dy);
       if (d > 0.4) {
         inp.mx = dx / d; inp.my = dy / d;
-        if (d > 4 && aiPump(ai)) inp.sprint = true;
+        if (d > 5 && aiPump(ai)) inp.sprint = true;
       }
-      if (d < 2.4) inp.y = true;
+      if (b.state === 'air' && d < 2.4) inp.y = true;
+      ai.look = { x: dest.x, y: dest.y };
       return inp;
     }
-    if (b.state === 'dead' || b.state === 'rest' || !b.holder) {
-      const dx = b.x - p.x, dy = b.y - p.y, d = Math.hypot(dx, dy) || 1;
-      inp.mx = dx / d; inp.my = dy / d;
-      if (d > 4 && aiPump(ai)) inp.sprint = true;
-      return inp;
+    const anchor = freeAnchor();
+    if (b.state === 'held' && st.t >= (ai.heyAt || 0)) {
+      floatText('HEY!', p.x, p.y, '#ffeb3b');
+      p.callT = st.t;
+      ai.heyAt = st.t + 3.2 + rng.random() * 3.4;
     }
-    const h = st.players[b.holder];
-    if (h) {
-      const dx = h.x - p.x, dy = (h.y + 5) - p.y, d = Math.hypot(dx, dy) || 1;
-      if (d > 4) { inp.mx = dx / d * 0.7; inp.my = dy / d * 0.7; }
-    }
-    return inp;
+    const spot = pickFreeSpot(p, anchor);
+    ai.look = anchor;
+    return freeSteer(p, spot.x, spot.y, anchor);
   }
   function stepFree(dt: number, human?: SimInput | null) {
     const humanIn = human || blankInput();
@@ -1559,7 +1714,16 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     const holder = st.ball.holder ? st.players[st.ball.holder] : undefined;
     const holdIn = holder ? inputs[holder.id] : undefined;
     if (holdIn?.aim) st.aimQB = holdIn.aim;
-    for (const id of ids) updateMovement(st.players[id], { ...inputs[id], rb: false, a: false, x: false }, dt);
+    for (const id of ids) {
+      const p = st.players[id];
+      updateMovement(p, { ...inputs[id], rb: false, a: false, x: false }, dt);
+      const look = st.ai[id]?.look;
+      const chasing = freeChaser() === id && (st.ball.state === 'air' || st.ball.state === 'dead' || st.ball.state === 'rest');
+      if (look && !chasing) {
+        const face = Math.atan2(look.y - p.y, look.x - p.x);
+        p.facing = wrapAngle(approachAngle(p.facing, face, 5 * dt));
+      }
+    }
     if (holder && holdIn && st.ball.state === 'held' && holdIn.throwPower !== null) {
       doThrow(st.aimQB || { x: holder.x, y: holder.y + 10 }, holdIn.throwPower, true);
     }
@@ -1590,7 +1754,7 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
         st.ball.state = 'held'; st.ball.holder = best.id; st.ball.vx = 0; st.ball.vy = 0; st.ball.vz = 0;
         st.ball.resolved = false; st.ball.gave = false;
         const bag = (st.ai[best.id] = st.ai[best.id] || {});
-        bag.pressAt = st.t + 0.7;
+        bag.pressAt = st.t + 0.65 + rng.random() * 0.5;
       }
     }
     st.floaters = st.floaters.filter((f) => st.t - f.t < 1.3);

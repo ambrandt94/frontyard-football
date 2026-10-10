@@ -342,6 +342,19 @@ export interface AiBag {
   seenT?: number;
   /** Next time the defender AI may flick the right stick into a lunge. */
   lungeAt?: number;
+  /** Throw Around spot this bot is drifting toward. */
+  spot?: { x: number; y: number };
+  spotT?: number;
+  /** Next time this bot calls for the ball. */
+  heyAt?: number;
+  /** Who they are looking at. */
+  look?: { x: number; y: number };
+  /** Coverage clock, rolled once per snap. */
+  holdMin?: number;
+  holdMax?: number;
+  releaseLag?: number;
+  readyAt?: number;
+  clockRoute?: string;
 }
 
 export interface ThrowSolution {

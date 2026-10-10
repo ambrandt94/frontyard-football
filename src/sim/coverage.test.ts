@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULTS, type Settings } from '../config/defaults';
-import { HOME_Y, ROUTES, STEP } from '../config/constants';
+import { HOME_Y, ROUTES, STEP, routeDef } from '../config/constants';
 import { blankInput, createSim } from './sim';
 import { mulberry32 } from './rng';
 import type { SimInput } from './types';
@@ -162,10 +162,81 @@ describe('coverage', () => {
   it('has the bot quarterback throw off coverage and record separation', () => {
     const s = coverage({ covSep: 0, covMaxHold: 5 }, mulberry32(3));
     s.step(STEP, press({ a: true }));
+    const snap = s.state.play.snapT ?? s.state.t;
+    const floor = routeDef(s.state.route).minHold[0];
+    for (let i = 0; i < 120 * 5 && s.state.ball.state !== 'air'; i++) s.step(STEP, blankInput());
     expect(s.state.ball.state).toBe('air');
+    expect(s.state.ball.throwT - snap).toBeGreaterThanOrEqual(floor - 0.02);
     expect(s.state.cov.targets).toBe(1);
     expect(s.state.cov.lastSep).toBeGreaterThan(1);
     expect(s.state.stats.att).toBe(1);
+  });
+
+  it('holds a covered route until the max, then throws', () => {
+    const s = createSim({ ...DEFAULTS, requireSnap: true, autoReset: false, covSep: 2.5, covMaxHold: 2.6, covMinHold: 1 }, { rng: mulberry32(8) });
+    s.setMode('coverage');
+    s.state.route = 'hitch';
+    s.reset(true);
+    s.step(STEP, press({ a: true }));
+    const snap = s.state.play.snapT ?? 0;
+    let threw = -1;
+    for (let i = 0; i < 120 * 6 && threw < 0; i++) {
+      const wr = s.state.players.wr;
+      const df = s.state.players.df;
+      df.x = wr.x + 0.35;
+      df.y = wr.y + 0.2;
+      df.vx = 0;
+      df.vy = 0;
+      s.step(STEP, blankInput());
+      if (s.state.ball.state === 'air') threw = s.state.ball.throwT - snap;
+    }
+    expect(threw).toBeGreaterThanOrEqual(routeDef('hitch').minHold[0] - 0.02);
+    expect(threw).toBeGreaterThan(2);
+    expect(threw).toBeLessThan(3.4);
+  });
+
+  it('logs 30 coverage throws and never beats the route minimum', () => {
+    const s = createSim({ ...DEFAULTS, requireSnap: true, autoReset: false }, { rng: mulberry32(21) });
+    s.setMode('coverage');
+    const log: Record<string, number[]> = {};
+    for (let n = 0; n < 30; n++) {
+      const name = ROUTES[n % ROUTES.length];
+      s.state.route = name;
+      s.reset(true);
+      s.state.controlled = 'df';
+      s.step(STEP, press({ a: true }));
+      const snap = s.state.play.snapT ?? s.state.t;
+      let threw = -1;
+      for (let i = 0; i < 120 * 6 && threw < 0; i++) {
+        s.step(STEP, blankInput());
+        if (s.state.ball.state === 'air') threw = s.state.ball.throwT - snap;
+      }
+      const floor = routeDef(name).minHold[0];
+      expect(threw, name).toBeGreaterThanOrEqual(floor - 0.02);
+      (log[name] = log[name] || []).push(+threw.toFixed(2));
+    }
+    const lines = ROUTES.map((name) => `${name} min ${routeDef(name).minHold[0].toFixed(1)}: ${(log[name] || []).join(', ')}`);
+    console.log('coverage throws n=30\n' + lines.join('\n'));
+  });
+
+  it('uses the route clock in Throw mode when the human plays defense', () => {
+    const s = createSim({ ...DEFAULTS, throwDefender: true, requireSnap: true, autoReset: false }, { rng: mulberry32(5) });
+    s.state.route = 'slant';
+    s.reset(true);
+    s.state.controlled = 'df';
+    s.step(STEP, press({ a: true }));
+    const snap = s.state.play.snapT ?? 0;
+    s.state.players.df.x = 2;
+    s.state.players.df.y = 8;
+    s.state.players.df.vx = 0;
+    s.state.players.df.vy = 0;
+    let threw = -1;
+    for (let i = 0; i < 120 * 4 && threw < 0; i++) {
+      s.step(STEP, blankInput());
+      if (s.state.ball.state === 'air' || s.state.ball.throwT > snap) threw = s.state.ball.throwT - snap;
+    }
+    expect(threw).toBeGreaterThanOrEqual(routeDef('slant').minHold[0] - 0.02);
+    expect(threw).toBeLessThan(1.7);
   });
 
   it('adds and removes the defender in Throw mode with the same outcomes', () => {

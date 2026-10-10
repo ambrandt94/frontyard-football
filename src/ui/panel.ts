@@ -384,14 +384,21 @@ export function createPanel(opts: {
   const fcov = gui.addFolder('Coverage');
   fcov.add(S, 'covAlign', ['off', 'press']).name('Alignment (press / off)').onChange(() => { if (clientLocked()) return; if (st.mode === 'coverage' || S.throwDefender) sim.reset(); });
   fcov.add(S, 'covShade', ['inside', 'outside']).name('Shade (inside / outside)').onChange(() => { if (clientLocked()) return; if (st.mode === 'coverage' || S.throwDefender) sim.reset(); });
+  fcov.add(S, 'covMinHold', 0.5, 1.8, 0.05).name('QB min-hold ×');
   fcov.add(S, 'covSep', 0.5, 8, 0.1).name('QB throws at separation (yd)');
-  fcov.add(S, 'covMaxHold', 0.4, 5, 0.05).name('QB max hold (s)');
+  fcov.add(S, 'covMaxHold', 0.4, 6, 0.05).name('QB max hold (s)');
   fcov.add(S, 'covAccuracy', 0, 1, 0.01).name('QB accuracy');
   fcov.add(S, 'covAiAgg', 0, 1, 0.01).name('AI defender aggressiveness');
   fcov.add(S, 'covArmRange', 0.6, 3.5, 0.05).name('Arm-check range (yd)');
   fcov.add(S, 'covArmSlow', 0.2, 5, 0.05).name('Arm-check slow (yd/s²)');
   fcov.add(S, 'covFlagTime', 0.15, 2, 0.05).name('Hold before FLAG (s)');
   fcov.close();
+
+  const ffree = gui.addFolder('Throw Around');
+  ffree.add(S, 'freeSpaceMin', 4, 16, 0.5).name('spacing min (yd)');
+  ffree.add(S, 'freeSpaceMax', 10, 30, 0.5).name('spacing max (yd)');
+  ffree.add(S, 'freeRepick', 1.5, 8, 0.1).name('reposition (s)');
+  ffree.close();
 
   const ft = gui.addFolder('Throwing');
   ft.add(S, 'minThrowSpeed', 5, 25, 0.5).name('min throw speed (yd/s)');

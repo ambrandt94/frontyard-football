@@ -176,8 +176,16 @@ export interface Settings {
   covShade: 'inside' | 'outside';
   /** Bot QB throws once the receiver is at least this far from the defender. */
   covSep: number;
+  /** Scales each route's minimum hold. 1 uses the route's own clock. */
+  covMinHold: number;
   /** Bot QB throws anyway after this many seconds from the snap. */
   covMaxHold: number;
+  /** Throw Around: bots stay at least this far from whoever has the ball. */
+  freeSpaceMin: number;
+  /** Throw Around: bots stay inside this far from whoever has the ball. */
+  freeSpaceMax: number;
+  /** Throw Around: how often a bot picks a new spot, seconds. */
+  freeRepick: number;
   /** 0 is wild, 1 is on the money. Scales throw scatter in Coverage. */
   covAccuracy: number;
   /** How hard the AI defender jams, closes, and goes for the ball. */
@@ -372,7 +380,11 @@ export const DEFAULTS: Settings = {
   covAlign: 'off',
   covShade: 'inside',
   covSep: 2.5,
+  covMinHold: 1,
   covMaxHold: 2.6,
+  freeSpaceMin: 8,
+  freeSpaceMax: 20,
+  freeRepick: 3.5,
   covAccuracy: 0.72,
   covAiAgg: 0.65,
   covArmRange: 1.7,
