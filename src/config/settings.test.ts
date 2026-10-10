@@ -59,6 +59,9 @@ describe('settings schema', () => {
     expect(saved.host.accel).toBe(18);
     expect(saved.host.deadzone).toBeUndefined();
     expect(saved.local.deadzone).toBe(DEFAULTS.deadzone);
+    expect(saved.host.aimResponse).toBeUndefined();
+    expect(saved.local.aimResponse).toBe(DEFAULTS.aimResponse);
+    expect(saved.local.aimReturnHold).toBe(DEFAULTS.aimReturnHold);
     expect(saved.local.accel).toBeUndefined();
 
     let presets = emptyPresetStore();
@@ -92,6 +95,11 @@ describe('settings schema', () => {
     const local = new Set<string>(LOCAL_KEYS);
     for (const key of HOST_KEYS) expect(local.has(key)).toBe(false);
     expect(local.has('deadzone')).toBe(true);
+    expect(local.has('aimResponse')).toBe(true);
+    expect(local.has('aimCurve')).toBe(true);
+    expect(local.has('aimDeadzone')).toBe(true);
+    expect(local.has('aimReturnHold')).toBe(true);
+    expect(local.has('aimMaxSpeed')).toBe(true);
     expect(local.has('accel')).toBe(false);
   });
 });

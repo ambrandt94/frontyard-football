@@ -43,7 +43,7 @@ The controls card is a small overlay. The first visit shows it; after that it st
 | Left stick | Move. Partial tilt jogs, full tilt runs. |
 | L3 (click) | Sprint pump. Each click adds speed, it holds, then fades. Cuts and easing off fade it faster. |
 | LT | Square up / slow down (two-hand catch, or a defender breaking down). |
-| Right stick | QB aim spot. On a run, a flick is a move (sidestep, truck, spin, juke) relative to your heading. A defender lunges in that world direction: forward and at speed goes farthest, sideways is shorter, and backward is a short weak step. |
+| Right stick | QB aim spot. The reticle eases after the stick and holds the spot when the stick springs back, so releasing the throw keeps that target. On a run, a flick is a move (sidestep, truck, spin, juke) relative to your heading. A defender lunges in that world direction: forward and at speed goes farthest, sideways is shorter, and backward is a short weak step. |
 | RT | QB: throw (soft = loft, hard = bullet). Receiver: one-hand catch. |
 | A | Pre-snap: snap the ball. Live: jump. A defender uses the same jump as a receiver. The ball carrier hurdles. |
 | Y | Receiver: timed catch. Before the throw: call for the ball. Defender in Coverage: interception if the ball is in the air, otherwise a punch. |

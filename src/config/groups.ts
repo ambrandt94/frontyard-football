@@ -5,6 +5,7 @@ export const LOCAL_KEYS = [
   'cameraMinExtent', 'cameraPadding', 'cameraFollow',
   'playerScale', 'playerVisuals', 'modelHeightYd', 'modelOutline',
   'showReach', 'showArc', 'renderer', 'deadzone',
+  'aimResponse', 'aimCurve', 'aimDeadzone', 'aimReturnHold', 'aimMaxSpeed',
   'netTurnUrl', 'netTurnUser', 'netTurnCred',
 ] as const satisfies readonly (keyof Settings)[];
 

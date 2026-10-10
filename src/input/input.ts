@@ -19,6 +19,8 @@ export interface InputMeta {
 
 export interface PolledInput extends SimInput {
   aimSpec: { mode: 'mouse'; x: number; y: number } | { mode: 'stick'; offset: { x: number; y: number } };
+  /** Raw right stick in field space, including zeros. Null when no pad is connected. */
+  aimStick: { x: number; y: number } | null;
 }
 
 export interface InputController {
@@ -87,14 +89,18 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
       const meta: InputMeta = { switch: false, reset: false, start: false, routeDelta: 0, route: null, toggleRenderer: false, toggleHelp: false, toggleGui: false, cycleTime: false, mode: false, posePreview: false };
       const pad = getPad();
       let padMove: { x: number; y: number } | null = null;
+      let aimStick: { x: number; y: number } | null = null;
       if (pad) {
         const B = (i: number) => pad.buttons[i] ? pad.buttons[i].pressed : false;
         const V = (i: number) => pad.buttons[i] ? pad.buttons[i].value : 0;
         const E = (i: number) => B(i) && !prevButtons[i];
+        const rawRX = pad.axes[2] || 0;
+        const rawRY = pad.axes[3] || 0;
+        aimStick = { x: rawRX, y: -rawRY };
         const L = radialDeadzone(pad.axes[0] || 0, pad.axes[1] || 0, S.deadzone);
-        const R = radialDeadzone(pad.axes[2] || 0, pad.axes[3] || 0, S.deadzone);
+        const R = radialDeadzone(rawRX, rawRY, S.deadzone);
         if (L.m > 0) { padMove = { x: L.x, y: -L.y }; lastDevice = 'gamepad'; }
-        if (R.m > 0) { aimMode = 'stick'; aimOffset = { x: R.x * S.maxAimRange, y: -R.y * S.maxAimRange }; lastDevice = 'gamepad'; }
+        if (Math.hypot(rawRX, rawRY) > S.aimDeadzone) { aimMode = 'stick'; lastDevice = 'gamepad'; }
         inp.lt = V(6) > 0.3;
         inp.sprint = E(10);
         inp.y = E(3);
@@ -198,6 +204,7 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
         if (now - arrowT > 60 && !inp.rs) { const am = Math.hypot(ax, ay); inp.rs = { x: ax / am, y: ay / am }; }
       } else arrowT = 0;
       inp.start = meta.start;
+      inp.aimStick = aimStick;
       inp.aimSpec = aimMode === 'mouse' ? { mode: 'mouse', x: mouse.x, y: mouse.y } : { mode: 'stick', offset: aimOffset };
       edges.clear();
       return { inp, meta };

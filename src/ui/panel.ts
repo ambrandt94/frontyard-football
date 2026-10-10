@@ -443,6 +443,11 @@ export function createPanel(opts: {
   fn.add(S, 'netTurnCred').name('TURN credential');
   const fv = gui.addFolder('View');
   fv.add(S, 'deadzone', 0, 0.5, 0.01).name('stick radial deadzone');
+  fv.add(S, 'aimResponse', 3, 22, 0.1).name('aim responsiveness');
+  fv.add(S, 'aimCurve', 1, 3, 0.05).name('aim stick curve');
+  fv.add(S, 'aimDeadzone', 0, 0.4, 0.01).name('aim deadzone');
+  fv.add(S, 'aimReturnHold', 0, 1.2, 0.01).name('aim return hold (s)');
+  fv.add(S, 'aimMaxSpeed', 20, 200, 1).name('aim max speed (yd/s)');
   fv.add(S, 'cameraMinExtent', 15, 120, 1).name('camera zoom: min yards visible').listen();
   fv.add(S, 'cameraPadding', 0, 20, 0.5).name('framing padding (yd)');
   fv.add(S, 'playerScale', 0.8, 2, 0.05).name('player visual scale');

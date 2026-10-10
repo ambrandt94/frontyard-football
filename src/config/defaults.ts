@@ -18,6 +18,16 @@ export interface Settings {
   easeOffStick: number;
   ltSpeedCap: number;
   deadzone: number;
+  /** Critically damped aim follow, in 1/s. Higher catches the stick sooner. */
+  aimResponse: number;
+  /** Exponent on stick magnitude after the aim deadzone. Higher is finer near the middle. */
+  aimCurve: number;
+  /** Radial deadzone used only for aiming. Movement still uses `deadzone`. */
+  aimDeadzone: number;
+  /** How long a quick stick return keeps the aimed spot before easing home. */
+  aimReturnHold: number;
+  /** Fastest the reticle may travel, in yards per second. */
+  aimMaxSpeed: number;
   facingTurnRate: number;
   minThrowSpeed: number;
   maxThrowSpeed: number;
@@ -238,6 +248,12 @@ export const DEFAULTS: Settings = {
   easeOffStick: 0.85,
   ltSpeedCap: 4,
   deadzone: 0.15,
+  // Local aim feel. The reticle eases after the stick and holds on a quick release.
+  aimResponse: 9,
+  aimCurve: 1.7,
+  aimDeadzone: 0.2,
+  aimReturnHold: 0.4,
+  aimMaxSpeed: 90,
   facingTurnRate: 18,
   minThrowSpeed: 13,
   maxThrowSpeed: 29,

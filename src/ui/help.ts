@@ -56,7 +56,7 @@ const BODY = [
     row(`${key('T')}`, 'Slow motion. Cycles 0.5×, 0.25×, and full speed.'),
   ].join('')),
   section('qb', 'Quarterback', [
-    row(`${RS} ${key('Mouse')}`, 'Aim the spot. Hold the throw, then let go.'),
+    row(`${RS} ${key('Mouse')}`, 'Aim the spot. The reticle eases after the stick and holds when you let go. Hold the throw, then let go.'),
     row(`${RT} ${key('F')}`, 'Throw. Soft is a loft, hard is a bullet.'),
     row(`${LB} ${RB} ×2`, `Pitch left or right. Flick ${RS} to aim it.`),
   ].join('')),
