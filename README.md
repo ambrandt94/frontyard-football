@@ -43,9 +43,9 @@ The controls card is a small overlay. The first visit shows it; after that it st
 | Left stick | Move. Partial tilt jogs, full tilt runs. |
 | L3 (click) | Sprint pump. Each click adds speed, it holds, then fades. Cuts and easing off fade it faster. |
 | LT | Square up / slow down (two-hand catch, or a defender breaking down). |
-| Right stick | QB aim spot. On a run, a flick is a move (sidestep, truck, spin, juke) relative to your heading. |
+| Right stick | QB aim spot. On a run, a flick is a move (sidestep, truck, spin, juke) relative to your heading. A defender lunges in that world direction: forward and at speed goes farthest, sideways is shorter, and backward is a short weak step. |
 | RT | QB: throw (soft = loft, hard = bullet). Receiver: one-hand catch. |
-| A | Pre-snap: snap the ball. Live: jump, or hurdle / wrap-up tackle once you are the ball carrier. |
+| A | Pre-snap: snap the ball. Live: jump. A defender uses the same jump as a receiver. The ball carrier hurdles. |
 | Y | Receiver: timed catch. Before the throw: call for the ball. Defender in Coverage: interception if the ball is in the air, otherwise a punch. |
 | RB / X / B | Receiver plant (tap) or stretch (hold), dive, bat. |
 | LB / RB double-tap | Pitch left / right. Flick the right stick to aim it. |
@@ -66,7 +66,7 @@ The controls card is a small overlay. The first visit shows it; after that it st
 | Hold left mouse or F | Throw power. Release to throw. |
 | E / F | Receiver: catch / one-hand. E before the throw calls for the ball. |
 | V / Space | Plant (hold V to stretch). Space is jump, or snap before the play. |
-| Z / V | Pitch left / right (double-tap). Arrow keys flick the virtual right stick. |
+| Z / V | Pitch left / right (double-tap). Arrow keys are the right stick for a defender too. |
 | X / B | Dive / bat. |
 | Tab | Switch player. |
 | R / Enter | Reset / Start. |
@@ -77,11 +77,11 @@ The controls card is a small overlay. The first visit shows it; after that it st
 | H | Hide or show the control card. The choice is remembered. |
 | G | Hide or show the settings panel. |
 
-1v1 carrier moves on the keyboard follow the right-stick table: arrows relative to your run (up = truck, down = juke, left/right = sidestep, down+left or down+right = spin). Z and V tap to switch hands, hold to stiff-arm, double-tap to pitch.
+1v1 carrier moves on the keyboard follow the right-stick table: arrows relative to your run (up = truck, down = juke, left/right = sidestep, down+left or down+right = spin). The same arrow keys are the defender's right stick, but that lunge is in world space: upfield, toward either sideline, or back. It is not relative to the way the defender is facing. Forward and already running covers the most ground. A sideways lunge is shorter. A backward lunge barely moves. Holding LT makes it a shorter, more reliable wrap. X stays the low diving tackle. A whiff plants the defender, longer the farther the lunge went. Z and V tap to switch hands, hold to stiff-arm, double-tap to pitch.
 
 Those carrier controls are shared. In Throw and Catch they turn on the moment the catch is completed, and they stay off while the ball is still in the air. The run ends on a tackle, out of bounds, a touchdown or the Catch target line, or a dive that comes up short. Yards after catch show in the HUD (live, last, and total). Coverage uses the same set after a catch, and again after an interception, with the defender returning the other way.
 
-Coverage defender, before the catch: LT squares up, LB arm-checks, Y plays the ball (interception timing, or a punch if it is still in the quarterback's hands), B bats it down, and A / X tackle only after someone has caught it. The defender can move anywhere before the snap. Press or off coverage, and inside or outside shade, are sliders in the Coverage folder, along with the bot quarterback's separation, max hold, and accuracy, and the AI defender's aggressiveness.
+Coverage defender, before the catch: LT squares up, LB arm-checks, Y plays the ball (interception timing, or a punch if it is still in the quarterback's hands), B bats it down, and A jumps. The right stick does not lunge while the quarterback still has the ball or while the pass is in the air. After a catch, when a runner is there to wrap, the stick lunges (arrow keys too). X is the low diving tackle against that runner. The defender can move anywhere before the snap. Press or off coverage, and inside or outside shade, are sliders in the Coverage folder, along with the bot quarterback's separation, max hold, and accuracy, and the AI defender's aggressiveness. Lunge distance, speed, alignment, speed scaling, stick threshold, cooldown, contact window, and miss recovery are host sliders in the tackling folder, next to wrap success.
 
 ## Tuning, presets, and files
 

@@ -13,6 +13,13 @@ export { blankInput } from './types';
 
 /** How often AI clicks L3. 0.1s ≈ 10 taps/s, so the 10-pump climb to max sprint takes ~1s (the old 3–4 pump climb took ~1s at 0.3s). */
 const AI_PUMP_INTERVAL = 0.1;
+/** Defender lunge burst. Distance and speed sliders scale this; the time stays put. */
+const LUNGE_TIME = 0.25;
+const LUNGE_SIDE = 0.55;
+const LUNGE_BACK = 0.28;
+const LUNGE_STAND = 0.42;
+/** LT breakdown shortens the lunge. Wrap odds still come from being squared up. */
+const LUNGE_BREAKDOWN = 0.62;
 
 const BANDS = ['short', 'medium', 'deep'];
 const MOVE_COLORS: Record<string, string> = { SIDESTEP: '#80deea', TRUCK: '#ff8a65', SPIN: '#ce93d8', JUKE: '#fff176' };
@@ -28,7 +35,7 @@ export interface Sim {
   snap(): void;
   doThrow(tgt: Vec2, power: number, useError: boolean, errScale?: number): void;
   setMode(m: ModeId): void;
-  resolveTackle(d: Player, c: Player, kind: 'wrap' | 'dive'): { kind: string; p: number; f: number; bigHit: boolean; notes: string[]; result: string; t: number };
+  resolveTackle(d: Player, c: Player, kind: 'wrap' | 'dive' | 'lunge'): { kind: string; p: number; f: number; bigHit: boolean; notes: string[]; result: string; t: number };
   handPos(p: Player): Vec2;
   /** When set, these ids are human and every other id is AI. Null keeps single-player control. */
   setSlotInputs(inputs: Record<string, SimInput> | null, hostSlotId: string | null): void;
@@ -192,6 +199,10 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     } else if (p.diveT >= 0) {
       p.diveT += dt; p.vx = Math.cos(p.diveDir) * p.diveSpeed; p.vy = Math.sin(p.diveDir) * p.diveSpeed; p.facing = p.diveDir;
       if (p.diveT >= S.diveDuration) { p.diveT = -1; p.groundT = p.diveRec ?? S.diveRecovery; p.vx *= 0.3; p.vy *= 0.3; }
+    } else if (p.tackle && p.tackle.kind === 'lunge' && st.t < (p.tackle.burstEnd ?? 0)) {
+      const dir = p.tackle.dir ?? p.facing;
+      const sp = p.tackle.speed ?? 0;
+      p.vx = Math.cos(dir) * sp; p.vy = Math.sin(dir) * sp; p.facing = dir;
     } else if (p.planted) {
       p.vx = 0; p.vy = 0; p.x = p.planted.x; p.y = p.planted.y;
     } else if (p.move && p.move.type === 'spin') {
@@ -530,7 +541,10 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
         const go = wantsSnap(humanIn, inputs);
         inputs.qb = blankInput();
         inputs.wr = blankInput();
-        if (go) snap();
+        if (go) {
+          snap();
+          if (inputs.df) inputs.df = { ...inputs.df, a: false };
+        }
       }
     } else {
       const mover = slotInputs ? inputs.qb : (inputs[st.controlled] || inputs.qb);
@@ -573,8 +587,14 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     if (S.autoReset && st.play.phase === 'over' && st.play.endT != null && st.t - st.play.endT > (st.play.result === 'CATCH' ? 3.5 : 2.2)) reset();
   }
   function stepDefenderCoverage(df: Player, di: SimInput, wr: Player, dt: number) {
-    updateMovement(df, { ...di, a: false, x: false, y: false, b: false, rb: false }, dt);
+    const live = st.play.phase === 'live';
+    updateMovement(df, { ...di, a: live && di.a, x: false, y: false, b: false, rb: false }, dt);
+    tryLunge(df, di);
     const caught = st.ball.state === 'held' && !!st.ball.holder && st.ball.holder !== 'qb';
+    if (caught && st.ball.holder) {
+      const carrier = st.players[st.ball.holder];
+      if (carrier) tackleCheck(df, carrier);
+    }
     const air = st.ball.state === 'air' && !st.ball.resolved && !st.ball.pitch;
     if (!caught && st.play.phase === 'live' && di.lbHeld) armCheck(df, wr, dt);
     if (air) {
@@ -1115,7 +1135,7 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     c.stiffHit = true; floatText('STIFF-ARM', c.x, c.y, '#ffcc80'); st.lastStiffArm = { t: st.t, eff };
   }
 
-  function resolveTackle(d: Player, c: Player, kind: 'wrap' | 'dive') {
+  function resolveTackle(d: Player, c: Player, kind: 'wrap' | 'dive' | 'lunge') {
     const notes: string[] = [];
     let p = kind === 'dive' ? S.diveTackleSuccess : S.wrapSuccess;
     if (!d.squared) { p *= S.noLTTackleMult; notes.push('no LT (arm tackle)'); }
@@ -1126,7 +1146,7 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     p *= clamp(1 - S.speedPenalty * Math.max(0, cs - S.jogSpeed), 0.4, 1);
     const dist = Math.hypot(c.x - d.x, c.y - d.y) || 1;
     const closing = ((d.vx - c.vx) * (c.x - d.x) + (d.vy - c.vy) * (c.y - d.y)) / dist;
-    const bigHit = kind === 'wrap' && d.squared && closing > S.bigHitSpeed;
+    const bigHit = kind !== 'dive' && d.squared && closing > S.bigHitSpeed;
     const m = c.move, hurdling = c.z > 0.05;
     if (m && m.type === 'spin' && (kind === 'dive' || !d.squared)) { p *= S.spinCounter; notes.push('spin beat it'); }
     if (c.vulnT > st.t) { p *= 1.3; notes.push('spin recovery (vulnerable)'); }
@@ -1151,7 +1171,8 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
   }
   function applyTackle(d: Player, c: Player, r: { result: string; bigHit: boolean; kind: string }) {
     if (r.result === 'TACKLED') {
-      floatText(r.bigHit ? 'BIG HIT!' : 'TACKLE', c.x, c.y, '#ff5252');
+      const label = r.bigHit ? 'BIG HIT!' : r.kind === 'lunge' ? 'WRAP' : 'TACKLE';
+      floatText(label, c.x, c.y, '#ff5252');
       c.groundT = 1.5; c.vx *= 0.3; c.vy *= 0.3; c.move = null; endCarrier('TACKLED');
     } else if (r.result === 'FUMBLE') {
       floatText(r.bigHit ? 'BIG HIT — FUMBLE!' : 'FUMBLE!', c.x, c.y, '#ffab40');
@@ -1160,16 +1181,66 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
       floatText('BROKEN TACKLE', c.x, c.y, '#69f0ae');
       const slow = c.move && c.move.type === 'truck' ? S.truckContactSlow : S.brokenSlow;
       c.vx *= slow; c.vy *= slow;
-      if (r.kind === 'wrap') { d.plantT = S.brokenStagger; d.vx *= 0.2; d.vy *= 0.2; }
+      if (r.kind === 'wrap' || r.kind === 'lunge') { d.plantT = S.brokenStagger; d.vx *= 0.2; d.vy *= 0.2; }
     }
+  }
+  function ballCarrier(): Player | undefined {
+    const id = st.ball.state === 'held' ? st.ball.holder : null;
+    return id ? st.players[id] : undefined;
+  }
+  /** How close a coverage defender must be before a right-stick flick lunges at a runner. */
+  function lungeNearDist() {
+    return Math.max(1.5, S.lungeDist * Math.max(0.4, S.lungeSpeed) + S.wrapReach + 0.8);
+  }
+  /**
+   * A lunge wraps a runner. Before the catch the quarterback still has the ball, or it is in the air,
+   * so the stick does nothing. Once someone else is carrying, run and after-catch lunges work at any
+   * range. A coverage step only lunges when that runner is already close.
+   */
+  function lungeAllowed(d: Player): boolean {
+    const c = ballCarrier();
+    if (!c || c.id === d.id || c.role === 'QB') return false;
+    if (st.carry || st.mode === 'run') return true;
+    return Math.hypot(c.x - d.x, c.y - d.y) <= lungeNearDist();
+  }
+  function lungeBurst(d: Player, dir: number) {
+    const sp = Math.hypot(d.vx, d.vy);
+    const ref = sp > 0.8 ? Math.atan2(d.vy, d.vx) : d.facing;
+    const align = Math.cos(dir - ref);
+    const shaped = align >= 0 ? lerp(LUNGE_SIDE, 1, align) : lerp(LUNGE_SIDE, LUNGE_BACK, -align);
+    const alignFactor = lerp(1, shaped, clamp(S.lungeAlign, 0, 1));
+    const spdN = clamp(sp / Math.max(1, S.fullSpeed), 0, 1);
+    const speedFactor = lerp(1, lerp(LUNGE_STAND, 1, spdN), clamp(S.lungeSpeedScale, 0, 1));
+    const ltFactor = d.squared ? LUNGE_BREAKDOWN : 1;
+    const along = d.vx * Math.cos(dir) + d.vy * Math.sin(dir);
+    const added = (Math.max(0, S.lungeDist) * Math.max(0, S.lungeSpeed) / LUNGE_TIME) * alignFactor * speedFactor * ltFactor;
+    const burst = Math.max(0.4, added + Math.max(0, along));
+    return { burst, dist: burst * LUNGE_TIME };
+  }
+  function tryLunge(d: Player, inp: SimInput) {
+    const rs = inp.rs;
+    const mag = rs ? Math.hypot(rs.x, rs.y) : 0;
+    const armAt = Math.max(0.15, S.lungeThreshold * 0.45);
+    if (mag < armAt) d.lungeReady = true;
+    const armed = d.lungeReady !== false;
+    if (st.play.phase !== 'live' || !lungeAllowed(d)) {
+      if (mag >= S.lungeThreshold) d.lungeReady = false;
+      return;
+    }
+    if (!armed || mag < S.lungeThreshold || !rs) return;
+    d.lungeReady = false;
+    if (d.tackle || d.diveT >= 0 || st.t < d.tackleCD || !isGrounded(d) || d.plantT > 0 || d.stunT > st.t) return;
+    const dir = Math.atan2(rs.y, rs.x);
+    const { burst, dist } = lungeBurst(d, dir);
+    d.tackle = { kind: 'lunge', t0: st.t, done: false, dir, dist, speed: burst, burstEnd: st.t + LUNGE_TIME };
+    d.tackleCD = st.t + Math.max(0.05, S.lungeCooldown);
+    d.vx = Math.cos(dir) * burst; d.vy = Math.sin(dir) * burst; d.facing = dir;
+    floatText('LUNGE', d.x, d.y, '#90caf9');
   }
   function defenderActions(d: Player, c: Player, inp: SimInput) {
     if (d.stunT > st.t || st.play.phase !== 'live') return;
+    tryLunge(d, inp);
     const dx = c.x - d.x, dy = c.y - d.y, dist = Math.hypot(dx, dy) || 1;
-    if (inp.a && !d.tackle && st.t > d.tackleCD && isGrounded(d) && d.plantT <= 0) {
-      d.tackle = { kind: 'wrap', t0: st.t, done: false }; d.tackleCD = st.t + S.tackleCooldown;
-      d.vx += dx / dist * S.wrapLunge; d.vy += dy / dist * S.wrapLunge;
-    }
     if (inp.x && !d.tackle && isGrounded(d) && d.plantT <= 0) {
       const m = Math.hypot(inp.mx, inp.my);
       d.diveT = 0; d.diveDir = m > 0.2 ? Math.atan2(inp.my, inp.mx) : Math.atan2(dy, dx);
@@ -1189,6 +1260,15 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
   function tackleCheck(d: Player, c: Player) {
     const tk = d.tackle; if (!tk) return;
     if (tk.kind === 'wrap' && st.t - tk.t0 > S.wrapWindow) { d.tackle = null; floatText('MISSED', d.x, d.y, '#bbb'); d.plantT = S.missStagger; return; }
+    if (tk.kind === 'lunge' && st.t > (tk.burstEnd ?? tk.t0) + S.lungeContact) {
+      d.tackle = null;
+      floatText('MISSED', d.x, d.y, '#bbb');
+      const ref = Math.max(0.25, S.lungeDist * Math.max(0.25, S.lungeSpeed));
+      const scale = clamp(0.45 + 0.85 * ((tk.dist ?? ref) / ref), 0.45, 1.75);
+      d.plantT = S.lungeMiss * scale;
+      d.vx *= 0.15; d.vy *= 0.15;
+      return;
+    }
     if (tk.kind === 'dive' && d.diveT < 0) { d.tackle = null; floatText(tk.hurdled ? 'HURDLED!' : 'MISSED', d.x, d.y, tk.hurdled ? '#69f0ae' : '#bbb'); return; }
     if (st.play.phase !== 'live' || st.ball.holder !== c.id) return;
     const ext = tk.kind === 'dive' ? 0.8 : 0.3, hx = d.x + Math.cos(d.facing) * ext, hy = d.y + Math.sin(d.facing) * ext;
@@ -1279,8 +1359,12 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     const real = Math.hypot(c.x - d.x, c.y - d.y), inFront = sign < 0 ? d.y < c.y + 0.5 : d.y > c.y - 0.5;
     if (real > 6 && aiPump(ai)) inp.sprint = true;
     if (real < lerp(4.5, 2.2, S.aiAggression) && inFront) inp.lt = true;
-    if (real < S.wrapReach + 0.4 && !d.tackle) inp.a = true;
-    else if (!d.tackle && real > 1.8 && real < S.diveTackleDist + 0.6 && rng.random() < S.aiAggression * 3 * dt) {
+    const lungeRange = S.wrapReach + Math.max(0.5, S.lungeDist * Math.max(0.4, S.lungeSpeed));
+    if (holder && holder.role !== 'QB' && real < lungeRange && !d.tackle && st.t >= (ai.lungeAt || 0)) {
+      const ang = Math.atan2(c.y - d.y, c.x - d.x);
+      inp.rs = { x: Math.cos(ang), y: Math.sin(ang) };
+      ai.lungeAt = st.t + Math.max(0.2, S.lungeCooldown);
+    } else if (!d.tackle && real > 1.8 && real < S.diveTackleDist + 0.6 && rng.random() < S.aiAggression * 3 * dt) {
       inp.x = true; const px = c.x + c.vx * 0.2 - d.x, py = c.y + c.vy * 0.2 - d.y, pm = Math.hypot(px, py) || 1; inp.mx = px / pm; inp.my = py / pm;
     }
     if (!inFront && real < S.punchReach && rng.random() < S.aiAggression * 1.5 * dt) inp.y = true;
@@ -1388,7 +1472,7 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     if (d) {
       let defIn = di;
       if (d.stunT > st.t) defIn = { ...di, mx: di.mx * 0.3, my: di.my * 0.3, a: false, x: false, y: false };
-      updateMovement(d, { ...defIn, a: false, x: false, y: false }, dt);
+      updateMovement(d, { ...defIn, x: false, y: false }, dt);
       defenderActions(d, c, defIn);
       stiffArmUpdate(c, d);
       tackleCheck(d, c);

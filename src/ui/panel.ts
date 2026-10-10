@@ -286,6 +286,14 @@ export function createPanel(opts: {
   ]);
   const ftk = gui.addFolder('1v1 Run: tackling & fumbles');
   addSliders(ftk, [
+    ['lungeDist', 0.4, 4, 0.05, 'lunge distance (yd)'],
+    ['lungeSpeed', 0.3, 2, 0.05, 'lunge speed ×'],
+    ['lungeAlign', 0, 1, 0.01, 'lunge alignment scale'],
+    ['lungeSpeedScale', 0, 1, 0.01, 'lunge speed scale'],
+    ['lungeThreshold', 0.2, 1, 0.01, 'lunge stick threshold'],
+    ['lungeCooldown', 0.1, 1.5, 0.01, 'lunge cooldown (s)'],
+    ['lungeContact', 0.05, 0.6, 0.01, 'lunge contact window (s)'],
+    ['lungeMiss', 0.05, 1.2, 0.01, 'lunge miss recovery (s)'],
     ['wrapReach', 0.5, 3, 0.05, 'wrap-up reach (yd)'],
     ['wrapWindow', 0.05, 0.6, 0.01, 'wrap-up window (s)'],
     ['wrapLunge', 0, 5, 0.1, 'wrap-up lunge (yd/s)'],

@@ -81,6 +81,22 @@ export interface Settings {
   wrapWindow: number;
   wrapLunge: number;
   wrapSuccess: number;
+  /** Added yards of a forward lunge at full speed, before momentum. The burst lasts 0.25s. */
+  lungeDist: number;
+  /** Multiplier on lunge burst speed. 1 covers lungeDist in that 0.25s. */
+  lungeSpeed: number;
+  /** 0 lunges the same distance every direction. 1 cuts sideways and backward lunges. */
+  lungeAlign: number;
+  /** 0 ignores current speed. 1 makes a standing lunge a short step. */
+  lungeSpeedScale: number;
+  /** Right-stick magnitude that starts a lunge. */
+  lungeThreshold: number;
+  /** Seconds before another lunge. The stick must drop and come back. */
+  lungeCooldown: number;
+  /** Seconds after the burst that a touch still tries a wrap. */
+  lungeContact: number;
+  /** Miss recovery at a full-length lunge, seconds. Shorter lunges get up faster. */
+  lungeMiss: number;
   diveTackleDist: number;
   diveTackleReach: number;
   diveTackleSuccess: number;
@@ -277,6 +293,14 @@ export const DEFAULTS: Settings = {
   wrapWindow: 0.2,
   wrapLunge: 2.0,
   wrapSuccess: 0.8,
+  lungeDist: 1.75,
+  lungeSpeed: 1,
+  lungeAlign: 1,
+  lungeSpeedScale: 1,
+  lungeThreshold: 0.65,
+  lungeCooldown: 0.55,
+  lungeContact: 0.18,
+  lungeMiss: 0.42,
   diveTackleDist: 3.0,
   diveTackleReach: 1.1,
   diveTackleSuccess: 0.55,

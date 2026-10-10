@@ -73,8 +73,10 @@ const BODY = [
     row(`${LB} ${RB}`, 'Tap to switch hands. Hold to stiff-arm. Double-tap to pitch.'),
   ].join('')),
   section('defender', 'Defender', [
-    row(`${LT} ${key('Q')}`, 'Break down and square up.'),
-    row(`${A} ${X}`, 'Wrap tackle, or a longer diving tackle.'),
+    row(`${LT} ${key('Q')}`, 'Break down and square up. A lunge from here is shorter and wraps more often.'),
+    row(`${A} ${key('Space')}`, 'Jump, the same as a receiver, to contest or knock down a high ball.'),
+    row(`${RS} ${key('Arrows')}`, 'Lunge that way on the field. Forward at speed goes farthest. Sideways is shorter, backward is weak. A miss takes longer to recover the farther you went. Reads LUNGE, WRAP, or MISSED.'),
+    row(`${X} ${key('X')}`, 'Low diving tackle. This is the dive. The right stick is not.'),
     row(`${Y} ${B}`, 'Play the ball: interception or punch, or bat it down.'),
     row(`${LB} ${key('Z')}`, 'Arm-check in coverage. Hold it too long and the play flags holding.'),
   ].join('')),

@@ -190,6 +190,7 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
       if (e('KeyP')) meta.posePreview = true;
       inp.lbHeld = !!inp.lbHeld || keys.has('KeyZ') || e('KeyZ');
       inp.rbHeld = !!inp.rbHeld || keys.has('KeyV') || e('KeyV');
+      // Arrows are the right stick. Carriers flick relative to their run. Defenders lunge in world space.
       const ax = (keys.has('ArrowRight') ? 1 : 0) - (keys.has('ArrowLeft') ? 1 : 0);
       const ay = (keys.has('ArrowUp') ? 1 : 0) - (keys.has('ArrowDown') ? 1 : 0);
       if (ax || ay) {

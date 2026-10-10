@@ -71,10 +71,18 @@ export interface Move {
 }
 
 export interface Tackle {
-  kind: 'wrap' | 'dive';
+  kind: 'wrap' | 'dive' | 'lunge';
   t0: number;
   done: boolean;
   hurdled?: boolean;
+  /** World direction of a lunge, radians. */
+  dir?: number;
+  /** Yards the burst is meant to cover, including speed already carried into it. */
+  dist?: number;
+  /** Burst speed, yards per second. */
+  speed?: number;
+  /** Sim time when the 0.25s burst ends. A touch can still wrap until this plus the contact window. */
+  burstEnd?: number;
 }
 
 export interface Player {
@@ -140,6 +148,8 @@ export interface Player {
   stunT: number;
   tackle: Tackle | null;
   tackleCD: number;
+  /** Right-stick lunge rearms once the stick drops. Absent means ready. */
+  lungeReady?: boolean;
   punchCD: number;
   dove: boolean;
   callCD?: number;
@@ -330,6 +340,8 @@ export interface AiBag {
   holdUntil?: number;
   seen?: { x: number; y: number; vx: number; vy: number } | null;
   seenT?: number;
+  /** Next time the defender AI may flick the right stick into a lunge. */
+  lungeAt?: number;
 }
 
 export interface ThrowSolution {

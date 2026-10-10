@@ -88,7 +88,7 @@ export function poseTargets(p: Player, st: PoseWorld, view: PoseView) {
   else if (p.diveT >= 0) add('dive');
   else if (p.planted) add(p.planted.falling ? 'fall' : 'stretch', Math.max(0.35, p.stretch || 0));
   else if (p.z > 0.05) add(p.role === 'RB' ? 'hurdle' : 'jump');
-  else if (p.tackle && p.tackle.kind === 'wrap') add('tackle');
+  else if (p.tackle && (p.tackle.kind === 'wrap' || p.tackle.kind === 'lunge')) add('tackle');
   else {
     loco = true;
     if (p.attempt) add(p.attempt.type === 'two' ? 'catchTwo' : 'catchOne');
