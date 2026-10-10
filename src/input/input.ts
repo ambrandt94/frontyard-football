@@ -12,6 +12,7 @@ export interface InputMeta {
   toggleRenderer: boolean;
   toggleHelp: boolean;
   toggleGui: boolean;
+  cycleTime: boolean;
   mode: boolean;
   posePreview: boolean;
 }
@@ -83,7 +84,7 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
     mouse,
     poll() {
       const inp = blankInput() as PolledInput;
-      const meta: InputMeta = { switch: false, reset: false, start: false, routeDelta: 0, route: null, toggleRenderer: false, toggleHelp: false, toggleGui: false, mode: false, posePreview: false };
+      const meta: InputMeta = { switch: false, reset: false, start: false, routeDelta: 0, route: null, toggleRenderer: false, toggleHelp: false, toggleGui: false, cycleTime: false, mode: false, posePreview: false };
       const pad = getPad();
       let padMove: { x: number; y: number } | null = null;
       if (pad) {
@@ -184,6 +185,7 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
       if (e('KeyM')) meta.toggleRenderer = true;
       if (e('KeyH')) meta.toggleHelp = true;
       if (e('KeyG')) meta.toggleGui = true;
+      if (e('KeyT')) meta.cycleTime = true;
       if (e('KeyN')) meta.mode = true;
       if (e('KeyP')) meta.posePreview = true;
       inp.lbHeld = !!inp.lbHeld || keys.has('KeyZ') || e('KeyZ');

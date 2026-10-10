@@ -172,6 +172,8 @@ export interface Settings {
   covArmSlow: number;
   /** Continuous arm-check time that draws a holding flag. */
   covFlagTime: number;
+  /** Multiplier on simulated time. 0.5 runs half as many 1/120 steps per real second. */
+  timeScale: number;
   cameraMinExtent: number;
   cameraPadding: number;
   cameraFollow: number;
@@ -352,6 +354,7 @@ export const DEFAULTS: Settings = {
   covArmRange: 1.7,
   covArmSlow: 1.6,
   covFlagTime: 0.65,
+  timeScale: 1,
   cameraMinExtent: 40,
   cameraPadding: 7,
   cameraFollow: 3.0,

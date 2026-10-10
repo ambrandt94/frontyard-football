@@ -93,7 +93,7 @@ Settings are a versioned document:
 { "schemaVersion": 6, "host": { "accel": 30 }, "local": { "deadzone": 0.15 } }
 ```
 
-`host` is gameplay and physics (movement, sprint, throws, catching, carrier moves, tackling, AI, and the mode toggles). `local` stays on this machine: camera, renderer, player model, stick deadzone, and the TURN login. On load, unknown keys are ignored and missing keys are filled from the defaults. Older flat saves and schema 5 `{ "values": { ... } }` documents still load. A newer `schemaVersion` still merges the keys this build knows.
+`host` is gameplay and physics (movement, sprint, throws, catching, carrier moves, tackling, AI, time scale, and the mode toggles). `local` stays on this machine: camera, renderer, player model, stick deadzone, and the TURN login. Time scale (the Play folder, or T) runs from 0.1× to 2× by taking fewer or more of the same 1/120 steps each real second. Buttons jump to 0.25×, 0.5×, and 1×. The HUD shows the scale whenever it is not 1×. In a room the host owns it. On load, unknown keys are ignored and missing keys are filled from the defaults. Older flat saves and schema 5 `{ "values": { ... } }` documents still load. A newer `schemaVersion` still merges the keys this build knows.
 
 The **Presets** folder adds:
 

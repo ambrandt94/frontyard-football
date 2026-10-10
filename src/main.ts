@@ -2,6 +2,7 @@ import './ui/style.css';
 import { DEFAULTS, type Settings } from './config/defaults';
 import { applyControlPreset, BUILTIN_PRESETS } from './config/presets';
 import { browserStore, loadSettings, saveSettings } from './config/settings';
+import { nextTimeScale, timeScaleOf } from './config/timeScale';
 import { CAM_FOV, FIELD_W, LOS_Y, ROUTES, STEP } from './config/constants';
 import { MODE_LABEL, MP_MODE_IDS, nextMode, type ModeId } from './modes';
 import { clamp, rad } from './sim/math';
@@ -138,6 +139,13 @@ function frame(now: number) {
     if (sandbox.mode !== label) sandbox.mode = label;
     if (session.phase === 'play' && sandbox.route !== st.route) sandbox.route = st.route;
   }
+  if (meta.cycleTime && session.role === 'client') toast('Host controls this');
+  if (meta.cycleTime && session.role !== 'client') {
+    S.timeScale = nextTimeScale(S.timeScale);
+    saveSettings(browserStore(), S);
+    panel.refresh();
+    if (session.role === 'host' && (session.phase === 'lobby' || session.phase === 'play')) session.pushSettings();
+  }
   if (meta.posePreview) sandbox.posePreview = !sandbox.posePreview;
 
   const thrower = localThrower();
@@ -158,7 +166,7 @@ function frame(now: number) {
 
   if (session.phase === 'lobby' || session.phase === 'play') session.tick(dt, online ? inp : null);
   if (!online) {
-    acc += dt;
+    acc += dt * timeScaleOf(S.timeScale);
     let first = true;
     while (acc >= STEP) {
       const i: SimInput = first ? inp : { ...inp, sprint: false, y: false, rt: false, rb: false, a: false, x: false, b: false, start: false, throwPower: null };

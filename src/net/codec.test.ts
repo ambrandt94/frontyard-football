@@ -43,9 +43,11 @@ describe('net codec', () => {
     expect(g.netTurnUrl).toBeUndefined();
     expect(g.deadzone).toBeUndefined();
     expect(g.fullSpeed).toBe(8);
+    expect(g.timeScale).toBe(1);
     const applied = { ...DEFAULTS };
-    applyGameplay(applied, { accel: 3, deadzone: 0.9, cameraMinExtent: 10 });
+    applyGameplay(applied, { accel: 3, deadzone: 0.9, cameraMinExtent: 10, timeScale: 0.5 });
     expect(applied.accel).toBe(3);
+    expect(applied.timeScale).toBe(0.5);
     expect(applied.deadzone).toBe(DEFAULTS.deadzone);
     expect(applied.cameraMinExtent).toBe(DEFAULTS.cameraMinExtent);
   });

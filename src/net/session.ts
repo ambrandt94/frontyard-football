@@ -3,6 +3,7 @@ import type { ModeId } from '../modes';
 import { MP_MODE_IDS } from '../modes';
 import type { Sim } from '../sim/sim';
 import { STEP } from '../config/constants';
+import { timeScaleOf } from '../config/timeScale';
 import type { SimInput } from '../sim/types';
 import { encodeMsg, frameToInput, inputToFrame, packSnapshot, parseMsg, present, stripEdges } from './codec';
 import { createPeerTransport } from './peerjs-transport';
@@ -615,7 +616,7 @@ export function createSession(opts: { sim: Sim; S: Settings; onChange: () => voi
       }
       let consumed = false;
       let guard = 0;
-      tickAcc += dt;
+      tickAcc += dt * timeScaleOf(S.timeScale);
       while (tickAcc >= TICK && guard++ < 4) {
         const use = consumed ? (localNow ? stripEdges(localNow) : null) : localNow;
         const inputs = collect(use);

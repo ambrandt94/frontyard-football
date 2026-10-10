@@ -1,4 +1,5 @@
 import type { Settings } from '../config/defaults';
+import { formatTimeScale } from '../config/timeScale';
 import { catchBandRange, maxSprintBoost } from '../config/defaults';
 import { clamp } from '../sim/math';
 import type { SimState } from '../sim/types';
@@ -49,6 +50,7 @@ export function updateHud(opts: {
     me.plantT > 0 && 'PLANT',
   ].filter(Boolean).join(' · ') || '—';
   const meter = sprintMeter(me.boost, me.boostHold, me.boostFast, S);
+  const time = Math.abs(S.timeScale - 1) > 0.001 ? `<div class="row"><span>Time</span><b>${formatTimeScale(S.timeScale)}</b></div>` : '';
   if (st.mode === 'catch' && st.cm) {
     const cm = st.cm, cs = cm.stats, [lo, hi] = catchBandRange(S, cm.band);
     const bs = (k: string) => `${cs.bands[k].c}/${cs.bands[k].a}`;
@@ -71,7 +73,8 @@ export function updateHud(opts: {
     <div class="row"><span>Speed</span><b>${sp.toFixed(1)} yd/s</b></div>
     ${meter}
     <div class="row"><span>State</span><b>${flags}</b></div>
-    <div class="row"><span>Input</span><b>${input.padConnected ? 'gamepad ✓' : 'kb+mouse'} · ${rendererName}</b></div>`;
+    <div class="row"><span>Input</span><b>${input.padConnected ? 'gamepad ✓' : 'kb+mouse'} · ${rendererName}</b></div>
+    ${time}`;
   } else if (st.mode === 'coverage') {
     const cov = st.cov;
     const avg = cov.throws ? cov.sepSum / cov.throws : 0;
@@ -95,7 +98,8 @@ export function updateHud(opts: {
     ${meter}
     <div class="row"><span>State</span><b>${flags}</b></div>
     <div class="row"><span>Play</span><b>${st.play.phase}</b></div>
-    <div class="row"><span>Input</span><b>${input.padConnected ? 'gamepad ✓' : 'kb+mouse'} · ${rendererName}</b></div>`;
+    <div class="row"><span>Input</span><b>${input.padConnected ? 'gamepad ✓' : 'kb+mouse'} · ${rendererName}</b></div>
+    ${time}`;
   } else if (st.mode === 'free') {
     const n = Object.keys(st.players).length;
     stats.innerHTML = `
@@ -106,7 +110,8 @@ export function updateHud(opts: {
     <div class="row"><span>Speed</span><b>${sp.toFixed(1)} yd/s</b></div>
     ${meter}
     <div class="row"><span>State</span><b>${flags}</b></div>
-    <div class="row"><span>Input</span><b>${input.padConnected ? 'gamepad ✓' : 'kb+mouse'} · ${rendererName}</b></div>`;
+    <div class="row"><span>Input</span><b>${input.padConnected ? 'gamepad ✓' : 'kb+mouse'} · ${rendererName}</b></div>
+    ${time}`;
   } else if (st.mode === 'run') {
     const c = st.players.rb, d = st.players.df, rs = st.runScore;
     const yds = Math.max(0, 110 - c.y);
@@ -122,7 +127,8 @@ export function updateHud(opts: {
     <div class="row"><span>Last pitch</span><b>${st.lastPitch ? (st.lastPitch.flicked ? 'flick ' : 'default ') + st.lastPitch.side + ' ' + st.lastPitch.pitchSpeed + ' yd/s' + (st.lastPitch.caughtBy ? ' ✓' : '') : '—'}</b></div>
     <div class="row"><span>State</span><b>${flags}${d.squared ? ' · DEF SQUARED' : ''}</b></div>
     <div class="row"><span>Play</span><b>${st.play.phase}</b></div>
-    <div class="row"><span>Input</span><b>${input.padConnected ? 'gamepad ✓' : 'kb+mouse'} · ${rendererName}</b></div>`;
+    <div class="row"><span>Input</span><b>${input.padConnected ? 'gamepad ✓' : 'kb+mouse'} · ${rendererName}</b></div>
+    ${time}`;
   } else {
     const holder = st.players[st.ball.holder || 'wr'];
     const sign = st.carry?.goalSign ?? 1;
@@ -143,7 +149,8 @@ export function updateHud(opts: {
     ${meter}
     <div class="row"><span>State</span><b>${flags}</b></div>
     <div class="row"><span>Play</span><b>${st.play.phase}</b></div>
-    <div class="row"><span>Input</span><b>${input.padConnected ? 'gamepad ✓' : 'kb+mouse'} · ${rendererName}</b></div>`;
+    <div class="row"><span>Input</span><b>${input.padConnected ? 'gamepad ✓' : 'kb+mouse'} · ${rendererName}</b></div>
+    ${time}`;
   }
   const preSnap = S.requireSnap && ((st.mode !== 'catch' && st.play.phase === 'pre') || (st.mode === 'catch' && !!st.cm && st.cm.phase === 'wait' && !S.catchPaused && !S.catchAIReceiver && st.t >= st.cm.readyT));
   prompt.style.display = preSnap ? 'block' : 'none';

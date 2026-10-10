@@ -17,6 +17,7 @@ import {
   type PresetStore,
 } from '../config/settings';
 import { assignKeys, HOST_KEYS, isHostKey, LOCAL_KEYS } from '../config/groups';
+import { timeScaleOf } from '../config/timeScale';
 import { applyControlPreset, builtinPreset, BUILTIN_PRESETS } from '../config/presets';
 import { MODE_LABEL, MODE_LABELS, modeFromLabel, MP_MODE_IDS, type ModeId } from '../modes';
 import type { Sim } from '../sim/sim';
@@ -200,8 +201,26 @@ export function createPanel(opts: {
     else if (phase === 'play') opts.onHostSettings?.();
   }
 
+  const extraHost: { disable(): void; enable(): void }[] = [];
+  function setTimeScale(value: number) {
+    if (clientLocked()) { toast('Host controls this'); return; }
+    S.timeScale = timeScaleOf(value);
+    saveSettings(store, S);
+    refresh();
+    if (hosting()) opts.onHostSettings?.();
+  }
+  const clocks = {
+    quarter: () => setTimeScale(0.25),
+    half: () => setTimeScale(0.5),
+    normal: () => setTimeScale(1),
+  };
+
   const gui = new GUI({ title: 'Sandbox settings' });
   const fp = gui.addFolder('Play');
+  fp.add(S, 'timeScale', 0.1, 2, 0.05).name('Time scale (T)').listen();
+  extraHost.push(fp.add(clocks, 'quarter').name('0.25×'));
+  extraHost.push(fp.add(clocks, 'half').name('0.5×'));
+  extraHost.push(fp.add(clocks, 'normal').name('1×'));
   fp.add(sandbox, 'mode', MODE_LABELS).name('Mode (N / D-pad ▲)').onChange((v: string) => setMode(modeFromLabel(v))).listen();
   fp.add(S, 'requireSnap').name('Require snap (A / Space)');
   fp.add(sandbox, 'route', [...ROUTES]).name('WR route (AI)').onChange((v: string) => {
@@ -499,6 +518,10 @@ export function createPanel(opts: {
     if (next === locked) return;
     locked = next;
     gui.domElement.classList.toggle('is-client', next);
+    for (const c of extraHost) {
+      if (next) c.disable();
+      else c.enable();
+    }
     for (const c of gui.controllersRecursive()) {
       const hostCtrl = c.object === S ? isHostKey(String(c.property)) : c.object === sandbox && lockedProps.has(String(c.property));
       if (!hostCtrl) continue;
