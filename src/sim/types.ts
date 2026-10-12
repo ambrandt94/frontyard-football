@@ -304,6 +304,11 @@ export interface SimState {
   ai: Record<string, AiBag>;
   callAt?: number | null;
   aimQB?: Vec2;
+  /**
+   * Coarse aim other players may see. `sx`/`sy` are the lag memory and stay on the host.
+   * Null when nobody is aiming.
+   */
+  aimHint?: { x: number; y: number; id: string; sx: number; sy: number } | null;
   cm?: CatchModeState;
   trailSide?: number;
   pendingSwap?: string | null;

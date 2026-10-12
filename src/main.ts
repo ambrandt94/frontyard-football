@@ -5,6 +5,7 @@ import { browserStore, loadSettings, saveSettings } from './config/settings';
 import { nextTimeScale, timeScaleOf } from './config/timeScale';
 import { CAM_FOV, FIELD_W, LOS_Y, ROUTES, STEP } from './config/constants';
 import { fitAngledCamera, rigAzimuth, type FramePoint } from './render/camera';
+import { PLAYER_COLORS } from './render/colors';
 import { MODE_LABEL, MP_MODE_IDS, nextMode, type ModeId } from './modes';
 import { clamp, rad } from './sim/math';
 import { aiLook, loadLook } from './sim/look';
@@ -395,7 +396,27 @@ function frame(now: number) {
     const arc = sim.previewThrow(previewLoft, previewPoint, style).arc;
     const end = arc[arc.length - 1];
     preview = resampleArc(arc, 32);
-    if (end) previewRing = { x: end.x, y: end.y, r: S.catchReach };
+    if (end) previewRing = { x: end.x, y: end.y, r: 0.58 };
+  }
+  const hint = st.aimHint;
+  const mine = localThrower();
+  let aimFuzz: ViewState['aimFuzz'] = null;
+  if (hint && S.showAimFuzz && hint.id !== mine?.id) {
+    const who = st.players[hint.id];
+    if (who) {
+      const radius = Math.max(1, S.aimFuzzRadius);
+      let seed = 0;
+      for (let i = 0; i < hint.id.length; i++) seed += hint.id.charCodeAt(i);
+      const wob = Math.min(1.35, radius * 0.22);
+      aimFuzz = {
+        x: hint.x + Math.sin(st.t * 1.7 + seed) * wob,
+        y: hint.y + Math.cos(st.t * 1.25 + seed * 0.7) * wob,
+        fromX: who.x,
+        fromY: who.y,
+        color: who.tint || PLAYER_COLORS[who.role] || 0xd32f2f,
+        radius,
+      };
+    }
   }
   for (const p of Object.values(st.players)) {
     const h = sim.handPos(p);
@@ -421,6 +442,10 @@ function frame(now: number) {
     preview,
     previewLoft,
     previewRing,
+    arcStyle: S.arcStyle === 'line' ? 'line' : 'dotted',
+    arcWidth: S.arcWidth,
+    arcOpacity: S.arcOpacity,
+    aimFuzz,
     aimGuide,
     route,
     showReach: S.showReach,

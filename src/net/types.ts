@@ -92,6 +92,8 @@ export interface Snapshot {
   cov: { targets: number; catches: number; pbus: number; ints: number; sepSum: number; throws: number; lastSep: number; last: string; flags: number };
   carry: { catchY: number; yac: number; goalY: number; goalLabel: 'TOUCHDOWN' | 'TARGET'; goalSign: 1 | -1 } | null;
   runScore: { td: number; stops: number; last: string };
+  /** Low-precision aim while someone is throwing. Null when they are not. No loft. */
+  aim: { x: number; y: number; id: string } | null;
 }
 
 export interface Seat {

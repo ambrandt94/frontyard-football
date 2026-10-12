@@ -52,6 +52,12 @@ describe('net codec', () => {
     expect(snapQb?.act).toBe('one');
     expect(snapQb?.wind).toBe(true);
     expect(snapQb?.stiff).toBe('R');
+    sim.state.aimHint = { x: 12, y: 40.5, id: 'qb', sx: 12.37, sy: 40.81 };
+    const aimed = packSnapshot(sim.state);
+    expect(aimed.aim).toEqual({ x: 12, y: 40.5, id: 'qb' });
+    expect(JSON.stringify(aimed.aim)).not.toContain('sx');
+    present(sim.state, packed, aimed, 1);
+    expect(sim.state.aimHint).toEqual({ x: 12, y: 40.5, id: 'qb', sx: 12, sy: 40.5 });
     present(sim.state, packed, packed, 1);
     expect(sim.state.players.qb.hand).toBe('L');
     expect(sim.state.players.qb.attempt?.type).toBe('one');

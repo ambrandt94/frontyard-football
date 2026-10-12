@@ -27,6 +27,14 @@ export interface ViewState {
   /** 0 is a loft (blue), 1 is a bullet (orange). */
   previewLoft: number;
   previewRing: { x: number; y: number; r: number } | null;
+  /** Dotted beads or a thin line. The local thrower only. */
+  arcStyle: 'dotted' | 'line';
+  /** 1 is the old ribbon width. */
+  arcWidth: number;
+  /** Peak opacity of the local preview. It still fades toward the landing spot. */
+  arcOpacity: number;
+  /** Soft, imprecise aim for everyone except the thrower. Null when it should stay hidden. */
+  aimFuzz: { x: number; y: number; fromX: number; fromY: number; color: number; radius: number } | null;
   /** Direction-charge line, in field yards. */
   aimGuide: { x: number; y: number; x2: number; y2: number } | null;
   route: { x: number; y: number; z?: number }[] | null;

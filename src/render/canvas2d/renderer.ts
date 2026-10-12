@@ -3,6 +3,7 @@ import { CAM_FOV, FIELD_L, FIELD_W, LOS_Y } from '../../config/constants';
 import { clamp, rad } from '../../sim/math';
 import type { SimState } from '../../sim/types';
 import { aiLook, hexCss } from '../../sim/look';
+import { loftRgb } from '../colors';
 import { makeFieldCanvas } from '../field';
 import type { FieldRenderer, ViewState } from '../types';
 
@@ -84,33 +85,88 @@ export function createCanvasRenderer(S: Settings): FieldRenderer {
         poly([{ x: view.aimGuide.x, y: view.aimGuide.y }, { x: view.aimGuide.x2, y: view.aimGuide.y2 }], 'rgba(255,255,255,.35)', 1.5);
       }
       if (view.preview && view.preview.length > 1) {
-        const loft = Math.max(0, Math.min(1, view.previewLoft || 0));
-        const cr = Math.round(66 + (255 - 66) * loft);
-        const cg = Math.round(165 + (112 - 165) * loft);
-        const cb = Math.round(245 + (67 - 245) * loft);
+        const [cr, cg, cb] = loftRgb(view.previewLoft || 0);
         const pts = view.preview;
-        for (let i = 1; i < pts.length; i++) {
-          const t = i / (pts.length - 1);
-          g.globalAlpha = 0.92 * (1 - t * 0.88);
-          g.strokeStyle = `rgb(${cr},${cg},${cb})`;
-          g.lineWidth = Math.max(1, 3.2 * (1 - t * 0.75));
-          g.setLineDash(i % 2 === 0 ? [5, 7] : []);
-          const [x0, y0] = P(pts[i - 1].x, pts[i - 1].y + (pts[i - 1].z || 0) * 0.35);
-          const [x1, y1] = P(pts[i].x, pts[i].y + (pts[i].z || 0) * 0.35);
+        const widthScale = Math.max(0.05, view.arcWidth || 0.35);
+        const opacity = Math.max(0, Math.min(1, view.arcOpacity ?? 0.5));
+        const widthYd = 1.1 * widthScale;
+        const css = `rgb(${cr},${cg},${cb})`;
+        if (view.arcStyle === 'line') {
+          for (let i = 1; i < pts.length; i++) {
+            const t = i / (pts.length - 1);
+            g.globalAlpha = opacity * (1 - t * 0.9);
+            g.strokeStyle = css;
+            g.lineWidth = Math.max(1, widthYd * scale * (1 - t * 0.7));
+            const [x0, y0] = P(pts[i - 1].x, pts[i - 1].y + (pts[i - 1].z || 0) * 0.35);
+            const [x1, y1] = P(pts[i].x, pts[i].y + (pts[i].z || 0) * 0.35);
+            g.beginPath();
+            g.moveTo(x0, y0);
+            g.lineTo(x1, y1);
+            g.stroke();
+          }
+        } else {
+          let carry = 0;
+          g.fillStyle = css;
+          const [x0, y0] = P(pts[0].x, pts[0].y + (pts[0].z || 0) * 0.35);
+          g.globalAlpha = opacity;
           g.beginPath();
-          g.moveTo(x0, y0);
-          g.lineTo(x1, y1);
-          g.stroke();
+          g.arc(x0, y0, Math.max(1.1, widthYd * 0.5 * scale), 0, 7);
+          g.fill();
+          for (let i = 1; i < pts.length; i++) {
+            const a = pts[i - 1];
+            const b = pts[i];
+            const seg = Math.hypot(b.x - a.x, b.y - a.y, (b.z || 0) - (a.z || 0));
+            carry += seg;
+            if (carry < 1.75) continue;
+            carry = 0;
+            const t = i / (pts.length - 1);
+            g.globalAlpha = opacity * (1 - t * 0.9);
+            const [x, y] = P(b.x, b.y + (b.z || 0) * 0.35);
+            g.beginPath();
+            g.arc(x, y, Math.max(1.1, widthYd * 0.5 * scale * (1 - t * 0.35)), 0, 7);
+            g.fill();
+          }
         }
-        g.setLineDash([]);
         g.globalAlpha = 1;
       }
       if (view.previewRing) {
-        const loft = Math.max(0, Math.min(1, view.previewLoft || 0));
-        const cr = Math.round(66 + (255 - 66) * loft);
-        const cg = Math.round(165 + (112 - 165) * loft);
-        const cb = Math.round(245 + (67 - 245) * loft);
-        ring(view.previewRing.x, view.previewRing.y, view.previewRing.r, `rgb(${cr},${cg},${cb})`, 2);
+        const [cr, cg, cb] = loftRgb(view.previewLoft || 0);
+        const css = `rgb(${cr},${cg},${cb})`;
+        const opacity = Math.max(0, Math.min(1, view.arcOpacity ?? 0.5));
+        const [ax, ay] = P(view.previewRing.x, view.previewRing.y);
+        g.globalAlpha = opacity * 0.16;
+        g.fillStyle = css;
+        g.beginPath();
+        g.arc(ax, ay, view.previewRing.r * 0.72 * scale, 0, 7);
+        g.fill();
+        g.globalAlpha = Math.min(0.72, opacity * 0.9);
+        ring(view.previewRing.x, view.previewRing.y, view.previewRing.r, css, 1);
+        g.globalAlpha = 1;
+      }
+      if (view.aimFuzz) {
+        const f = view.aimFuzz;
+        const [x, y] = P(f.x, f.y);
+        const [x0, y0] = P(f.fromX, f.fromY);
+        const rad = f.radius * scale;
+        const cr = (f.color >> 16) & 255;
+        const cg = (f.color >> 8) & 255;
+        const cb = f.color & 255;
+        const rgba = (a: number) => `rgba(${cr},${cg},${cb},${a})`;
+        g.fillStyle = rgba(0.1);
+        g.beginPath();
+        g.moveTo(x0, y0);
+        const ang = Math.atan2(y - y0, x - x0);
+        g.lineTo(x + Math.cos(ang + 0.45) * rad * 0.75, y + Math.sin(ang + 0.45) * rad * 0.75);
+        g.lineTo(x + Math.cos(ang - 0.45) * rad * 0.75, y + Math.sin(ang - 0.45) * rad * 0.75);
+        g.fill();
+        const grad = g.createRadialGradient(x, y, rad * 0.05, x, y, rad);
+        grad.addColorStop(0, rgba(0.26));
+        grad.addColorStop(0.5, rgba(0.1));
+        grad.addColorStop(1, rgba(0));
+        g.fillStyle = grad;
+        g.beginPath();
+        g.arc(x, y, rad, 0, 7);
+        g.fill();
       }
       if (view.reticle) {
         const r = view.reticle;

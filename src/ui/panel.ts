@@ -431,6 +431,8 @@ export function createPanel(opts: {
   ft.add(S, 'lobPress', 0.5, 1, 0.01).name('lob press');
   ft.add(S, 'lobWindow', 0.05, 1.5, 0.01).name('lob window (s)');
   ft.add(S, 'pumpBite', 0, 1, 0.01).name('pump fake bite chance');
+  ft.add(S, 'showAimFuzz').name('show aim fuzz');
+  ft.add(S, 'aimFuzzRadius', 1, 8, 0.25).name('aim fuzz radius (yd)');
 
   const fc = gui.addFolder('Catching');
   fc.add(S, 'catchWindowMs', 40, 400, 5).name('Y catch window (ms)');
@@ -504,6 +506,9 @@ export function createPanel(opts: {
   fv.add(S, 'cameraFollow', 0.5, 12, 0.1).name('camera follow');
   fv.add(S, 'showReach').name('show WR reach ring');
   fv.add(S, 'showArc').name('show ball arc');
+  fv.add(S, 'arcStyle', { Dotted: 'dotted', Line: 'line' }).name('Arc style');
+  fv.add(S, 'arcWidth', 0.1, 1.2, 0.01).name('arc width');
+  fv.add(S, 'arcOpacity', 0, 1, 0.01).name('arc opacity');
   fv.add(S, 'renderer', ['three', 'canvas2d']).name('renderer (M)').onChange((v: string) => opts.setRenderer(v === 'canvas2d' ? 'canvas2d' : 'three'));
 
   const fpre = gui.addFolder('Presets');

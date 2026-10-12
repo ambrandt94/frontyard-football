@@ -5,7 +5,7 @@ export const LOCAL_KEYS = [
   'cameraMinExtent', 'cameraPadding', 'cameraFollow',
   'camStyle', 'camPitch', 'camFov', 'camHeightBias', 'camUpfieldBias', 'fieldStyle',
   'playerScale', 'playerVisuals', 'modelHeightYd', 'modelOutline', 'armIk', 'armIkDebug',
-  'showReach', 'showArc', 'renderer', 'deadzone',
+  'showReach', 'showArc', 'arcStyle', 'arcWidth', 'arcOpacity', 'renderer', 'deadzone',
   'rtEngage', 'rtRelease', 'rtMinHoldMs',
   'aimMode', 'aimDeadzone', 'aimMinDist', 'aimMaxDist', 'aimDistExp',
   'aimEuroMin', 'aimEuroBeta', 'aimAngleDeadband', 'aimGraceMs',

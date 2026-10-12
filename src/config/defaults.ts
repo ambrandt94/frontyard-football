@@ -272,6 +272,16 @@ export interface Settings {
   armIkDebug: boolean;
   showReach: boolean;
   showArc: boolean;
+  /** Local throw preview. 1 is the old ribbon width. This machine only. */
+  arcWidth: number;
+  /** Peak opacity of the local throw preview. This machine only. */
+  arcOpacity: number;
+  /** Dotted beads, or a thin line. This machine only. */
+  arcStyle: 'dotted' | 'line';
+  /** Soft aim marker for everyone except the thrower. The host decides. */
+  showAimFuzz: boolean;
+  /** Yards. The host quantizes the sent aim to about half of this. */
+  aimFuzzRadius: number;
   autoReset: boolean;
   renderer: 'three' | 'canvas2d';
   /** Optional TURN server for strict NATs. Empty until someone fills it in. */
@@ -499,6 +509,11 @@ export const DEFAULTS: Settings = {
   armIkDebug: false,
   showReach: true,
   showArc: true,
+  arcWidth: 0.35,
+  arcOpacity: 0.5,
+  arcStyle: 'dotted',
+  showAimFuzz: true,
+  aimFuzzRadius: 4,
   autoReset: true,
   renderer: 'three',
   netTurnUrl: '',
@@ -512,6 +527,7 @@ const ENUMS: Partial<Record<keyof Settings, readonly string[]>> = {
   camStyle: ['all22', 'topdown', 'broadcast'],
   fieldStyle: ['pixel', 'classic'],
   aimMode: ['absolutePlus', 'directionCharge'],
+  arcStyle: ['dotted', 'line'],
   covAlign: ['press', 'off'],
   covShade: ['inside', 'outside'],
 };

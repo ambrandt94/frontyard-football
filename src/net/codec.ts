@@ -129,6 +129,7 @@ export function packSnapshot(st: SimState): Snapshot {
     cov: { ...st.cov },
     carry: st.carry ? { ...st.carry } : null,
     runScore: { ...st.runScore },
+    aim: st.aimHint ? { x: st.aimHint.x, y: st.aimHint.y, id: st.aimHint.id } : null,
   };
 }
 
@@ -211,6 +212,8 @@ export function present(st: SimState, older: Snapshot, newer: Snapshot, alpha: n
   b.aimed = nb.aimed ? { ...nb.aimed } : null;
   b.landing = nb.landing ? { x: nb.landing.x, y: nb.landing.y, z: 0, t: newer.t } : null;
   b.arc = nb.arc.map((p) => ({ ...p }));
+  const na = newer.aim;
+  st.aimHint = na ? { x: na.x, y: na.y, id: na.id, sx: na.x, sy: na.y } : null;
 }
 
 export function parseMsg(data: unknown): NetMsg | null {

@@ -5,7 +5,7 @@ import { clamp } from '../../sim/math';
 import { angledPose } from '../camera';
 import type { Player } from '../../sim/types';
 import { aiLook } from '../../sim/look';
-import { PLAYER_COLORS } from '../colors';
+import { BULLET_COLOR, LOB_COLOR, PLAYER_COLORS } from '../colors';
 import { makeFieldCanvas } from '../field';
 import type { FieldRenderer, ViewState } from '../types';
 import { buildPixelStadium, CLASSIC_SKY, PIXEL_SKY, type PixelStadium } from './stadium';
@@ -68,6 +68,10 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
   let preview: LineHandle = null!;
   let ribbon: THREE.Mesh = null!;
   let previewRing: THREE.Mesh = null!;
+  let previewFill: THREE.Mesh = null!;
+  let beads: THREE.Sprite[] = [];
+  let fuzzBlob: THREE.Mesh = null!;
+  let fuzzWedge: THREE.Mesh = null!;
   let guide: LineHandle = null!;
   let route: LineHandle = null!;
   let reticle: THREE.Group = null!;
@@ -198,8 +202,8 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
     };
   }
 
-  const loftBlue = new THREE.Color(0x42a5f5);
-  const bulletOrange = new THREE.Color(0xff7043);
+  const loftBlue = new THREE.Color(LOB_COLOR);
+  const bulletOrange = new THREE.Color(BULLET_COLOR);
   const loftMix = new THREE.Color();
 
   function makeRibbon(): THREE.Mesh {
@@ -228,8 +232,9 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
     const g = canvas.getContext('2d');
     if (g) {
       const grad = g.createLinearGradient(0, 0, 64, 0);
-      grad.addColorStop(0, 'rgba(255,255,255,0.95)');
-      grad.addColorStop(1, 'rgba(255,255,255,0.04)');
+      grad.addColorStop(0, 'rgba(255,255,255,1)');
+      grad.addColorStop(0.62, 'rgba(255,255,255,0.28)');
+      grad.addColorStop(1, 'rgba(255,255,255,0)');
       g.fillStyle = grad;
       g.fillRect(0, 0, 64, 2);
     }
@@ -242,7 +247,7 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
     return mesh;
   }
 
-  function updateRibbon(points: { x: number; y: number; z?: number }[], loft: number) {
+  function updateRibbon(points: { x: number; y: number; z?: number }[], loft: number, widthScale: number, opacity: number) {
     const geo = ribbon.geometry as THREE.BufferGeometry;
     const pos = geo.attributes.position as THREE.BufferAttribute;
     const col = geo.attributes.color as THREE.BufferAttribute;
@@ -264,7 +269,7 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
       }
       const len = Math.hypot(tx, tz) || 1;
       const t = n <= 1 ? 0 : i / (n - 1);
-      const w = 0.55 * (1 - t * 0.9);
+      const w = 0.55 * widthScale * (1 - t * 0.82);
       const px = (-tz / len) * w;
       const pz = (tx / len) * w;
       const y = (p.z || 0) + 0.12;
@@ -287,6 +292,110 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
     pos.needsUpdate = true;
     col.needsUpdate = true;
     uv.needsUpdate = true;
+    basic(ribbon).opacity = opacity;
+  }
+
+  function softDisc(inner: number): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const g = canvas.getContext('2d');
+    if (g) {
+      const grad = g.createRadialGradient(32, 32, inner, 32, 32, 32);
+      grad.addColorStop(0, 'rgba(255,255,255,0.95)');
+      grad.addColorStop(0.55, 'rgba(255,255,255,0.45)');
+      grad.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = grad;
+      g.fillRect(0, 0, 64, 64);
+    }
+    return new THREE.CanvasTexture(canvas);
+  }
+
+  function samplesAlong(points: { x: number; y: number; z?: number }[], spacing: number) {
+    const out: { x: number; y: number; z: number; t: number }[] = [];
+    if (points.length < 2) return out;
+    let total = 0;
+    for (let i = 1; i < points.length; i++) {
+      total += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y, (points[i].z || 0) - (points[i - 1].z || 0));
+    }
+    total = Math.max(total, 0.001);
+    out.push({ x: points[0].x, y: points[0].y, z: points[0].z || 0, t: 0 });
+    let carry = 0;
+    let walked = 0;
+    for (let i = 1; i < points.length && out.length < beads.length; i++) {
+      const a = points[i - 1];
+      const b = points[i];
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const dz = (b.z || 0) - (a.z || 0);
+      const seg = Math.hypot(dx, dy, dz) || 0.0001;
+      let done = 0;
+      while (done < seg && out.length < beads.length) {
+        const need = spacing - carry;
+        if (done + need <= seg + 1e-4) {
+          const u = (done + need) / seg;
+          walked += need;
+          out.push({
+            x: a.x + dx * u,
+            y: a.y + dy * u,
+            z: (a.z || 0) + dz * u,
+            t: Math.min(1, walked / total),
+          });
+          done += need;
+          carry = 0;
+        } else {
+          carry += seg - done;
+          walked += seg - done;
+          break;
+        }
+      }
+    }
+    return out;
+  }
+
+  function updateBeads(points: { x: number; y: number; z?: number }[], loft: number, widthScale: number, opacity: number) {
+    const spots = samplesAlong(points, 1.75);
+    loftMix.copy(loftBlue).lerp(bulletOrange, Math.max(0, Math.min(1, loft)));
+    const diam = 1.1 * widthScale;
+    for (let i = 0; i < beads.length; i++) {
+      const bead = beads[i];
+      const spot = spots[i];
+      if (!spot) { bead.visible = false; continue; }
+      bead.visible = true;
+      bead.position.set(spot.x, spot.z + 0.16, -spot.y);
+      const shrink = 1 - spot.t * 0.4;
+      bead.scale.setScalar(Math.max(0.08, diam * shrink));
+      const mat = bead.material as THREE.SpriteMaterial;
+      mat.color.copy(loftMix);
+      mat.opacity = opacity * (1 - spot.t * 0.9);
+    }
+  }
+
+  function updateFuzz(fuzz: ViewState['aimFuzz']) {
+    fuzzBlob.visible = !!fuzz;
+    fuzzWedge.visible = !!fuzz;
+    if (!fuzz) return;
+    fuzzBlob.position.set(fuzz.x, 0.05, -fuzz.y);
+    fuzzBlob.scale.set(fuzz.radius, fuzz.radius, 1);
+    basic(fuzzBlob).color.setHex(fuzz.color);
+    const pos = (fuzzWedge.geometry as THREE.BufferGeometry).attributes.position as THREE.BufferAttribute;
+    const a = pos.array as Float32Array;
+    const fx = fuzz.fromX;
+    const fz = -fuzz.fromY;
+    const bx = fuzz.x;
+    const bz = -fuzz.y;
+    const dx = bx - fx;
+    const dz = bz - fz;
+    const len = Math.hypot(dx, dz) || 1;
+    const px = (-dz / len) * fuzz.radius * 0.42;
+    const pz = (dx / len) * fuzz.radius * 0.42;
+    const y = 0.04;
+    a[0] = fx + dx * 0.08; a[1] = y; a[2] = fz + dz * 0.08;
+    a[3] = bx + px; a[4] = y; a[5] = bz + pz;
+    a[6] = bx - px; a[7] = y; a[8] = bz - pz;
+    pos.needsUpdate = true;
+    fuzzWedge.geometry.computeBoundingSphere();
+    basic(fuzzWedge).color.setHex(fuzz.color);
   }
 
   function syncSheet(view: ViewState) {
@@ -461,9 +570,42 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
       scene.add(reticle);
       landing = mk(new THREE.RingGeometry(0.5, 0.75, 32), 0xff7043);
       landing.frustumCulled = false;
-      previewRing = mk(new THREE.RingGeometry(0.82, 1, 40), 0x42a5f5);
+      previewRing = mk(new THREE.RingGeometry(0.88, 1, 48), LOB_COLOR, 0.55);
       previewRing.frustumCulled = false;
       previewRing.visible = false;
+      previewFill = mk(new THREE.CircleGeometry(0.72, 32), LOB_COLOR, 0.1);
+      previewFill.frustumCulled = false;
+      previewFill.visible = false;
+      const disc = softDisc(6);
+      beads = [];
+      for (let i = 0; i < 28; i++) {
+        const bead = new THREE.Sprite(new THREE.SpriteMaterial({
+          map: disc, color: LOB_COLOR, transparent: true, opacity: 0.5, depthWrite: false,
+        }));
+        bead.visible = false;
+        bead.frustumCulled = false;
+        bead.renderOrder = 3;
+        scene.add(bead);
+        beads.push(bead);
+      }
+      const blobTex = softDisc(2);
+      fuzzBlob = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshBasicMaterial({
+        map: blobTex, color: 0xffffff, transparent: true, opacity: 0.32, depthWrite: false,
+      }));
+      fuzzBlob.rotation.x = -Math.PI / 2;
+      fuzzBlob.frustumCulled = false;
+      fuzzBlob.visible = false;
+      fuzzBlob.renderOrder = 1;
+      scene.add(fuzzBlob);
+      const wedgeGeo = new THREE.BufferGeometry();
+      wedgeGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(9), 3));
+      fuzzWedge = new THREE.Mesh(wedgeGeo, new THREE.MeshBasicMaterial({
+        color: 0xffffff, transparent: true, opacity: 0.1, depthWrite: false, side: THREE.DoubleSide,
+      }));
+      fuzzWedge.frustumCulled = false;
+      fuzzWedge.visible = false;
+      fuzzWedge.renderOrder = 1;
+      scene.add(fuzzWedge);
       cue = mk(new THREE.RingGeometry(0.88, 1.0, 48), 0xffeb3b);
       api.resize();
     },
@@ -609,15 +751,28 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
       landing.visible = inAir && !!b.landing;
       if (b.landing) landing.position.set(b.landing.x, 0.05, -b.landing.y);
       const showPreview = !!view.preview && view.preview.length > 1;
-      ribbon.visible = showPreview;
-      if (showPreview && view.preview) updateRibbon(view.preview, view.previewLoft || 0);
+      const widthScale = Math.max(0.05, view.arcWidth || 0.35);
+      const arcOpacity = Math.max(0, Math.min(1, view.arcOpacity ?? 0.5));
+      const dotted = view.arcStyle !== 'line';
+      ribbon.visible = showPreview && !dotted;
+      if (showPreview && view.preview && !dotted) updateRibbon(view.preview, view.previewLoft || 0, widthScale, arcOpacity);
+      if (showPreview && view.preview && dotted) updateBeads(view.preview, view.previewLoft || 0, widthScale, arcOpacity);
+      else for (const bead of beads) bead.visible = false;
       previewRing.visible = !!view.previewRing;
+      previewFill.visible = !!view.previewRing;
       if (view.previewRing) {
+        const ringR = Math.max(0.2, view.previewRing.r);
         previewRing.position.set(view.previewRing.x, 0.07, -view.previewRing.y);
-        previewRing.scale.setScalar(Math.max(0.2, view.previewRing.r));
+        previewFill.position.set(view.previewRing.x, 0.06, -view.previewRing.y);
+        previewRing.scale.setScalar(ringR);
+        previewFill.scale.setScalar(ringR);
         loftMix.copy(loftBlue).lerp(bulletOrange, Math.max(0, Math.min(1, view.previewLoft || 0)));
         basic(previewRing).color.copy(loftMix);
+        basic(previewFill).color.copy(loftMix);
+        basic(previewRing).opacity = Math.min(0.72, arcOpacity * 0.9);
+        basic(previewFill).opacity = arcOpacity * 0.16;
       }
+      updateFuzz(view.aimFuzz);
       guide.show(!!view.aimGuide);
       if (view.aimGuide) guide.set([{ x: view.aimGuide.x, y: view.aimGuide.y }, { x: view.aimGuide.x2, y: view.aimGuide.y2 }], 1);
       reticle.visible = !!view.reticle;

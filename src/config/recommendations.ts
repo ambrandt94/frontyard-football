@@ -33,6 +33,9 @@ export const RECOMMENDED: Partial<Record<keyof Settings, readonly [number, numbe
   chargeTime: [0.7, 1.6],
   chargeExp: [1.1, 1.8],
   previewDefaultLoft: [0.3, 0.7],
+  arcWidth: [0.3, 0.4],
+  arcOpacity: [0.35, 0.65],
+  aimFuzzRadius: [3, 5],
 };
 
 /** Upper bounds that stop a 3× stretch from becoming a nonsense angle or rate. */
@@ -54,6 +57,8 @@ export const SLIDER_CAP: Partial<Record<keyof Settings, { min?: number; max?: nu
   rtEngage: { min: 0.05, max: 0.9 },
   rtRelease: { min: 0, max: 0.6 },
   rtMinHoldMs: { min: 0, max: 400 },
+  arcWidth: { min: 0.08, max: 1.5 },
+  aimFuzzRadius: { min: 1, max: 12 },
 };
 
 function tidy(n: number): number {

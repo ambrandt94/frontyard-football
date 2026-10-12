@@ -8,6 +8,7 @@ import type { ModeId } from '../modes';
 import type { Look } from './look';
 import { approachAngle, clamp, easeThresholds, gauss as gaussOf, lerp, lowAngle, rad, speedForAngle, wrapAngle } from './math';
 import { defaultRng, type Rng } from './rng';
+import { stepAimHint } from './aimHint';
 import { freshThrowArm, stepThrowArm, throwTune } from './throwArm';
 import { blankInput, type AiBag, type ArcPoint, type Ball, type Move, type Player, type SimInput, type SimState, type ThrowSolution, type Vec2 } from './types';
 
@@ -56,8 +57,11 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     armT: 0, flagged: false,
     carry: null, runScore: { td: 0, stops: 0, last: '—' }, feedback: null, floaters: [],
     route: 'slant', idleT: 0, throwArm: freshThrowArm(), controlled: 'qb', ctl: { throw: 'qb', run: 'rb', catch: 'wr', coverage: 'df', free: 'p0' }, ai: {},
+    aimHint: null,
   };
   let slotInputs: Record<string, SimInput> | null = null;
+  /** This frame's aim from the player who has the ball. Cleared after the hint steps. */
+  let liveAim: Vec2 | null = null;
   let netHostSlot: string | null = null;
   let roster = 2;
 
@@ -98,6 +102,8 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
   function reset(keepRoute = false) {
     st.floaters = [];
     st.throwArm = freshThrowArm();
+    st.aimHint = null;
+    liveAim = null;
     st.carry = null;
     st.armT = 0;
     st.flagged = false;
@@ -778,7 +784,34 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
       endPlay(result);
     }
     if (S.autoReset && st.play.phase === 'over' && st.play.endT != null && st.t - st.play.endT > (st.play.result === 'CATCH' ? 3.5 : 2.2)) reset();
+    const hid = st.ball.holder;
+    if (hid && inputs[hid]?.aim) liveAim = inputs[hid].aim;
+    refreshAimHint(dt);
     watchIdleBall(dt);
+  }
+  function refreshAimHint(dt: number) {
+    const radius = Math.max(1, S.aimFuzzRadius || 4);
+    const id = st.ball.state === 'held' ? st.ball.holder : null;
+    const thrower = id ? st.players[id] : undefined;
+    let point: Vec2 | null = null;
+    if (thrower && S.showAimFuzz) {
+      const arm = st.throwArm;
+      const look = st.ai[thrower.id]?.look;
+      if (arm.phase === 'window' && arm.lock) point = arm.lock;
+      else if (arm.phase === 'charge') point = liveAim || st.aimQB || null;
+      else if (st.mode === 'catch' && st.cm?.phase === 'windup' && st.players.wr) {
+        const w = st.players.wr;
+        point = { x: clamp(w.x + w.vx * 0.4, 1, FIELD_W - 1), y: clamp(w.y + w.vy * 0.4, 1, FIELD_L - 1) };
+      } else if (liveAim) point = liveAim;
+      else if (!humanControls(thrower.id) && look) point = look;
+    }
+    st.aimHint = stepAimHint(
+      st.aimHint ?? null,
+      point && thrower ? { x: point.x, y: point.y, id: thrower.id } : null,
+      dt,
+      radius,
+    );
+    liveAim = null;
   }
   function stepDefenderCoverage(df: Player, di: SimInput, wr: Player, dt: number) {
     const live = st.play.phase === 'live';
@@ -1067,6 +1100,7 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     catchUpdate(w);
     if (cm.phase === 'air' && b.state !== 'air' && b.resolved && !st.carry) finishCatchRep();
     st.floaters = st.floaters.filter(f => st.t - f.t < 1.3);
+    refreshAimHint(dt);
     watchIdleBall(dt);
   }
 
@@ -1650,6 +1684,7 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     advanceCarrier(dt, holder, d, ci, di);
     st.floaters = st.floaters.filter(f => st.t - f.t < 1.3);
     if (st.mode !== 'catch' && S.autoReset && st.play.phase === 'over' && st.play.endT != null && st.t - st.play.endT > 2.6) reset();
+    refreshAimHint(dt);
     watchIdleBall(dt);
   }
   /** Shared 1v1 carrier update: moves, shoulders, hurdle/dive, pursuer, and how the play ends. */
@@ -1962,6 +1997,9 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
       }
     }
     st.floaters = st.floaters.filter((f) => st.t - f.t < 1.3);
+    const hid = st.ball.holder;
+    if (hid && inputs[hid]?.aim) liveAim = inputs[hid].aim;
+    refreshAimHint(dt);
     watchIdleBall(dt);
   }
   function stepRun(dt: number, human?: SimInput | null) {
@@ -1981,6 +2019,7 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     if (st.pendingSwap) { swapCarrier(st.pendingSwap); st.pendingSwap = null; }
     st.floaters = st.floaters.filter(f => st.t - f.t < 1.3);
     if (S.autoReset && st.play.phase === 'over' && st.play.endT != null && st.t - st.play.endT > 2.6) reset();
+    refreshAimHint(dt);
     watchIdleBall(dt);
   }
 
