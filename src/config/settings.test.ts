@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULTS } from './defaults';
+import { recommendedRange } from './recommendations';
 import { HOST_KEYS, LOCAL_KEYS } from './groups';
 import {
   countRecognized,
@@ -55,14 +56,14 @@ describe('settings schema', () => {
     expect(loadSettings(store).accel).toBe(18);
     expect(loadSettings(store).catchPaused).toBe(true);
     const saved = JSON.parse(store.data['tdfb.sandbox.settings.v1']);
-    expect(saved.schemaVersion).toBe(6);
+    expect(saved.schemaVersion).toBe(7);
     expect(saved.host.accel).toBe(18);
     expect(saved.host.deadzone).toBeUndefined();
     expect(saved.local.deadzone).toBe(DEFAULTS.deadzone);
     expect(saved.host.camStyle).toBeUndefined();
     expect(saved.local.camStyle).toBe('all22');
     expect(saved.host.aimMode).toBeUndefined();
-    expect(saved.local.aimMode).toBe('absolutePlus');
+    expect(saved.local.aimMode).toBe('directionCharge');
     expect(saved.local.aimGraceMs).toBe(DEFAULTS.aimGraceMs);
     expect(saved.local.accel).toBeUndefined();
 
@@ -76,7 +77,7 @@ describe('settings schema', () => {
     expect(presetSettings(loaded, 'Deep balls')?.jogSpeed).toBe(DEFAULTS.jogSpeed);
     const remaining = deletePreset(loaded, 'Arcade');
     expect(presetSettings(remaining, 'Arcade')).toBeNull();
-    expect(toDocument(custom).schemaVersion).toBe(6);
+    expect(toDocument(custom).schemaVersion).toBe(7);
   });
 
   it('reads schema 5 values bags and schema 6 host/local bags', () => {
@@ -88,6 +89,38 @@ describe('settings schema', () => {
     expect(from6.deadzone).toBe(0.4);
     expect(from6.renderer).toBe('canvas2d');
     expect(from6.fullSpeed).toBe(DEFAULTS.fullSpeed);
+  });
+
+  it('moves schema 6 Absolute+ and the old camera defaults onto direction charge', () => {
+    const moved = mergeSettings({
+      schemaVersion: 6,
+      host: { accel: 17 },
+      local: { aimMode: 'absolutePlus', cameraMinExtent: 40, cameraPadding: 7, deadzone: 0.4 },
+    });
+    expect(moved.aimMode).toBe('directionCharge');
+    expect(moved.cameraMinExtent).toBe(DEFAULTS.cameraMinExtent);
+    expect(moved.cameraPadding).toBe(DEFAULTS.cameraPadding);
+    expect(moved.deadzone).toBe(0.4);
+    expect(moved.accel).toBe(17);
+
+    const keptAim = mergeSettings({ schemaVersion: 6, local: { aimMode: 'directionCharge', cameraMinExtent: 55 } });
+    expect(keptAim.aimMode).toBe('directionCharge');
+    expect(keptAim.cameraMinExtent).toBe(55);
+
+    const chosen = mergeSettings({ schemaVersion: 7, local: { aimMode: 'absolutePlus', cameraMinExtent: 40 } });
+    expect(chosen.aimMode).toBe('absolutePlus');
+    expect(chosen.cameraMinExtent).toBe(40);
+    expect(mergeSettings({}).aimMode).toBe('directionCharge');
+  });
+
+  it('keeps each numeric default inside its recommended slider band', () => {
+    for (const key of Object.keys(DEFAULTS) as (keyof typeof DEFAULTS)[]) {
+      const value = DEFAULTS[key];
+      if (typeof value !== 'number') continue;
+      const [lo, hi] = recommendedRange(key, value);
+      expect(value, key).toBeGreaterThanOrEqual(lo);
+      expect(value, key).toBeLessThanOrEqual(hi);
+    }
   });
 
   it('puts every setting in exactly one group', () => {
@@ -107,6 +140,9 @@ describe('settings schema', () => {
     expect(local.has('aimMinDist')).toBe(true);
     expect(local.has('aimMaxDist')).toBe(true);
     expect(local.has('chargePingPong')).toBe(true);
+    expect(local.has('rtEngage')).toBe(true);
+    expect(local.has('rtRelease')).toBe(true);
+    expect(local.has('rtMinHoldMs')).toBe(true);
     expect(local.has('previewDefaultLoft')).toBe(true);
     expect(local.has('accel')).toBe(false);
   });

@@ -19,8 +19,8 @@ test('aim modes switch live and the arc morphs with RT', async ({ page }) => {
     return !!view?.preview && view.preview.length > 8;
   });
 
-  await page.keyboard.press('k');
-  await expect(page.locator('#aim-mode')).toContainText('Direction charge');
+  const starting = await page.evaluate(() => (window as unknown as { __sandbox: { S: { aimMode: string } } }).__sandbox.S.aimMode);
+  expect(starting).toBe('directionCharge');
   await page.keyboard.press('k');
   await expect(page.locator('#aim-mode')).toContainText('Absolute+');
 
@@ -59,6 +59,9 @@ test('aim modes switch live and the arc morphs with RT', async ({ page }) => {
   console.log(`arc morph step=${maxStep.toFixed(2)} yd span=${span.toFixed(2)} yd`);
   expect(maxStep).toBeLessThan(6);
   expect(span).toBeGreaterThan(1);
+
+  await page.keyboard.press('k');
+  await expect(page.locator('#aim-mode')).toContainText('Direction charge');
 
   const real = errors.filter((e) => !/favicon/i.test(e));
   expect(real).toEqual([]);

@@ -18,6 +18,12 @@ export interface Settings {
   easeOffStick: number;
   ltSpeedCap: number;
   deadzone: number;
+  /** Gamepad RT must pass this before a throw charge or a one-hand catch counts. */
+  rtEngage: number;
+  /** After RT engages, the throw releases only once it drops below this. */
+  rtRelease: number;
+  /** A trigger brush shorter than this never becomes a throw, milliseconds. */
+  rtMinHoldMs: number;
   /** Absolute+ or direction charge. Local to this player. */
   aimMode: 'absolutePlus' | 'directionCharge';
   /** Radial deadzone used only for aiming. Movement still uses `deadzone`. */
@@ -277,7 +283,10 @@ export const DEFAULTS: Settings = {
   easeOffStick: 0.85,
   ltSpeedCap: 4,
   deadzone: 0.15,
-  aimMode: 'absolutePlus',
+  rtEngage: 0.35,
+  rtRelease: 0.12,
+  rtMinHoldMs: 80,
+  aimMode: 'directionCharge',
   aimDeadzone: 0.12,
   aimMinDist: 3,
   aimMaxDist: 50,
@@ -444,8 +453,8 @@ export const DEFAULTS: Settings = {
   covArmSlow: 1.6,
   covFlagTime: 0.65,
   timeScale: 1,
-  cameraMinExtent: 40,
-  cameraPadding: 7,
+  cameraMinExtent: 26,
+  cameraPadding: 5,
   cameraFollow: 3.0,
   camStyle: 'all22',
   camPitch: 42,

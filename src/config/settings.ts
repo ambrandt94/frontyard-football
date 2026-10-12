@@ -68,6 +68,24 @@ export function countRecognized(raw: unknown): number {
   return n;
 }
 
+function savedSchemaVersion(raw: unknown): number {
+  const obj = asRecord(raw);
+  if (!obj) return SETTINGS_SCHEMA_VERSION;
+  return typeof obj.schemaVersion === 'number' ? obj.schemaVersion : 0;
+}
+
+/**
+ * Schema 6 shipped with Absolute+ and a wider default camera.
+ * Move anyone still on those old defaults once. A later choice of Absolute+
+ * is saved as schema 7 and left alone. A custom zoom is left alone too.
+ */
+function migrateLoaded(raw: unknown, next: Settings, values: Record<string, unknown>) {
+  if (savedSchemaVersion(raw) >= 7) return;
+  if (values.aimMode === undefined || values.aimMode === 'absolutePlus') next.aimMode = 'directionCharge';
+  if (values.cameraMinExtent === 40) next.cameraMinExtent = DEFAULTS.cameraMinExtent;
+  if (values.cameraPadding === 7) next.cameraPadding = DEFAULTS.cameraPadding;
+}
+
 /** Missing keys stay at defaults. Unknown keys and wrong types are dropped. */
 export function mergeSettings(raw: unknown, base: Settings = DEFAULTS): Settings {
   const next = { ...base };
@@ -79,6 +97,7 @@ export function mergeSettings(raw: unknown, base: Settings = DEFAULTS): Settings
     if (!settingAccepts(key, value)) continue;
     (next as Record<keyof Settings, Settings[keyof Settings]>)[key] = value as Settings[keyof Settings];
   }
+  migrateLoaded(raw, next, values);
   return next;
 }
 

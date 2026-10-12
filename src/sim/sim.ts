@@ -53,7 +53,7 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     cov: { targets: 0, catches: 0, pbus: 0, ints: 0, sepSum: 0, throws: 0, lastSep: 0, last: '—', flags: 0 },
     armT: 0, flagged: false,
     carry: null, runScore: { td: 0, stops: 0, last: '—' }, feedback: null, floaters: [],
-    route: 'slant', controlled: 'qb', ctl: { throw: 'qb', run: 'rb', catch: 'wr', coverage: 'df', free: 'p0' }, ai: {},
+    route: 'slant', idleT: 0, controlled: 'qb', ctl: { throw: 'qb', run: 'rb', catch: 'wr', coverage: 'df', free: 'p0' }, ai: {},
   };
   let slotInputs: Record<string, SimInput> | null = null;
   let netHostSlot: string | null = null;
@@ -447,8 +447,10 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
         say('DROP (one-hand)', '#ff5252'); st.stats.last = 'DROP'; return;
       }
       const fx = p.planted ? p.planted.x : p.x, fy = p.planted ? p.planted.y : p.y;
-      if (fx < 0 || fx > FIELD_W || fy > FIELD_L) {
-        b.resolved = true; b.gave = true; b.vx *= 0.3; b.vy *= 0.3; st.stats.last = 'OUT OF BOUNDS';
+      if (fx < 0 || fx > FIELD_W || fy < 0 || fy > FIELD_L) {
+        b.x = clamp(b.x, 0, FIELD_W); b.y = clamp(b.y, 0, FIELD_L);
+        b.vx = 0; b.vy = 0; b.vz = 0; b.z = 0.12; b.state = 'dead';
+        b.resolved = true; b.gave = true; st.stats.last = 'OUT OF BOUNDS';
         say('OUT OF BOUNDS — INCOMPLETE', '#bbb'); floatText('OUT OF BOUNDS', p.x, p.y, '#bbb'); return;
       }
       b.state = 'held'; b.holder = p.id; b.resolved = true; b.gave = true;
@@ -538,22 +540,88 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     return inp;
   }
 
+  const BALL_PAST = 3;
+  function outOfField(x: number, y: number) {
+    return x < 0 || x > FIELD_W || y < 0 || y > FIELD_L;
+  }
+  function farOut(x: number, y: number) {
+    return x < -BALL_PAST || x > FIELD_W + BALL_PAST || y < -BALL_PAST || y > FIELD_L + BALL_PAST;
+  }
+  /** Loose balls bounce back inside instead of coming to rest past the sideline. */
+  function containLoose(b: typeof st.ball) {
+    let hit = false;
+    if (b.x < 0) { b.x = 0; b.vx = Math.abs(b.vx) * 0.45; hit = true; }
+    else if (b.x > FIELD_W) { b.x = FIELD_W; b.vx = -Math.abs(b.vx) * 0.45; hit = true; }
+    if (b.y < 0) { b.y = 0; b.vy = Math.abs(b.vy) * 0.45; hit = true; }
+    else if (b.y > FIELD_L) { b.y = FIELD_L; b.vy = -Math.abs(b.vy) * 0.45; hit = true; }
+    if (hit && b.z <= 0.2 && Math.hypot(b.vx, b.vy) < 1.5) {
+      b.vx = 0; b.vy = 0; b.vz = 0; b.state = 'rest';
+    }
+  }
+  function settleOut(b: typeof st.ball) {
+    b.x = clamp(b.x, 0, FIELD_W);
+    b.y = clamp(b.y, 0, FIELD_L);
+    b.z = 0.12; b.vx = 0; b.vy = 0; b.vz = 0;
+    b.state = 'rest'; b.resolved = true; b.gave = true;
+    if (st.play.phase !== 'over' && st.stats.last !== 'FUMBLE') {
+      st.stats.last = 'OUT OF BOUNDS';
+      if (st.mode !== 'free') say('OUT OF BOUNDS', '#bbb');
+    }
+  }
   function ballUpdate(dt: number) {
     const b = st.ball;
     if (b.state === 'held') { holdBall(); return; }
-    if (b.state === 'rest') return;
+    if (b.state === 'rest') {
+      if (outOfField(b.x, b.y)) containLoose(b);
+      return;
+    }
     b.vz -= GRAV * dt; b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt;
+    const sailing = b.state === 'air' && (farOut(b.x, b.y) || (b.z <= 0.12 && outOfField(b.x, b.y)));
+    if (sailing) { settleOut(b); return; }
+    if (b.state === 'dead' && outOfField(b.x, b.y)) containLoose(b);
     if (b.z <= 0.12) {
       b.z = 0.12;
       if (b.state === 'air') {
         b.state = 'dead';
         const w = st.players.wr;
-        if (w && (w.wasIn || w.dropPending) && !b.gave) { say('DROP', '#ff5252'); b.gave = true; st.stats.last = 'DROP'; w.dropPending = false; }
+        if (w && (w.wasIn || w.dropPending) && !b.gave && !outOfField(b.x, b.y)) {
+          say('DROP', '#ff5252'); b.gave = true; st.stats.last = 'DROP'; w.dropPending = false;
+        }
         b.resolved = true;
+        if (outOfField(b.x, b.y)) { settleOut(b); return; }
       }
       if (Math.abs(b.vz) < 1.2) { b.vz = 0; b.vx *= 0.9; b.vy *= 0.9; if (Math.hypot(b.vx, b.vy) < 0.3) b.state = 'rest'; }
       else { b.vz = -b.vz * 0.35; b.vx *= 0.5; b.vy *= 0.5; }
     }
+    if ((b.state === 'dead' || b.state === 'rest') && outOfField(b.x, b.y)) containLoose(b);
+  }
+  const IDLE_LIMIT = 4;
+  function handLooseToNearest() {
+    const b = st.ball;
+    let best: Player | null = null;
+    let bestD = Infinity;
+    for (const p of Object.values(st.players)) {
+      const d = Math.hypot(p.x - b.x, p.y - b.y);
+      if (d < bestD) { bestD = d; best = p; }
+    }
+    if (!best) return;
+    b.state = 'held'; b.holder = best.id; b.vx = 0; b.vy = 0; b.vz = 0;
+    b.resolved = false; b.gave = false;
+    const bag = (st.ai[best.id] = st.ai[best.id] || {});
+    bag.pressAt = st.t + 0.65;
+    holdBall();
+  }
+  /** A dead ball that nobody picks up goes back to the snap, or to the nearest player in Throw Around. */
+  function watchIdleBall(dt: number) {
+    const b = st.ball;
+    if (!b) return;
+    if (st.mode === 'catch' && st.cm && (st.cm.phase === 'wait' || st.cm.phase === 'windup')) { st.idleT = 0; return; }
+    if (b.state === 'held' || b.state === 'air' || b.holder) { st.idleT = 0; return; }
+    st.idleT += dt;
+    if (st.idleT < IDLE_LIMIT) return;
+    st.idleT = 0;
+    if (st.mode === 'free') { handLooseToNearest(); return; }
+    reset();
   }
 
   function step(dt: number, human?: SimInput | null) {
@@ -609,13 +677,15 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
       if (b.state === 'air' && !b.resolved) catchUpdate(w);
     }
     st.floaters = st.floaters.filter(f => st.t - f.t < 1.3);
-    if (!b.pitch && b.state !== 'air' && b.state !== 'held' && b.resolved && st.play.phase !== 'over') {
+    const stray = b.state !== 'air' && b.state !== 'held' && b.resolved && st.play.phase !== 'over';
+    if (stray && (!b.pitch || st.stats.last === 'OUT OF BOUNDS')) {
       if (!b.gave) say('INCOMPLETE', '#bbb');
       const result = b.gave && st.stats.last !== '—' && st.stats.last !== 'CATCH' ? st.stats.last : 'INCOMPLETE';
       if (passDefense()) st.cov.last = result;
       endPlay(result);
     }
     if (S.autoReset && st.play.phase === 'over' && st.play.endT != null && st.t - st.play.endT > (st.play.result === 'CATCH' ? 3.5 : 2.2)) reset();
+    watchIdleBall(dt);
   }
   function stepDefenderCoverage(df: Player, di: SimInput, wr: Player, dt: number) {
     const live = st.play.phase === 'live';
@@ -901,6 +971,7 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     catchUpdate(w);
     if (cm.phase === 'air' && b.state !== 'air' && b.resolved && !st.carry) finishCatchRep();
     st.floaters = st.floaters.filter(f => st.t - f.t < 1.3);
+    watchIdleBall(dt);
   }
 
   function floatText(text: string, x: number, y: number, color = '#fff') { st.floaters.push({ text, x, y, t: st.t, color }); }
@@ -1481,6 +1552,7 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     advanceCarrier(dt, holder, d, ci, di);
     st.floaters = st.floaters.filter(f => st.t - f.t < 1.3);
     if (st.mode !== 'catch' && S.autoReset && st.play.phase === 'over' && st.play.endT != null && st.t - st.play.endT > 2.6) reset();
+    watchIdleBall(dt);
   }
   /** Shared 1v1 carrier update: moves, shoulders, hurdle/dive, pursuer, and how the play ends. */
   function advanceCarrier(dt: number, c: Player, d: Player | undefined, ci: SimInput, di: SimInput) {
@@ -1511,6 +1583,9 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     }
     ballUpdate(dt);
     pitchCatchCheck(); looseBallCheck();
+    if (st.play.phase === 'live' && !st.ball.holder && st.ball.state !== 'air' && st.stats.last === 'OUT OF BOUNDS') {
+      endCarrier('OUT OF BOUNDS');
+    }
     const sign = st.carry?.goalSign ?? 1;
     if (st.carry && st.play.phase === 'live') st.carry.yac = (c.y - st.carry.catchY) * sign;
     if (st.play.phase === 'live') {
@@ -1758,6 +1833,7 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
       }
     }
     st.floaters = st.floaters.filter((f) => st.t - f.t < 1.3);
+    watchIdleBall(dt);
   }
   function stepRun(dt: number, human?: SimInput | null) {
     const c = st.players.rb, d = st.players.df;
@@ -1776,6 +1852,7 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     if (st.pendingSwap) { swapCarrier(st.pendingSwap); st.pendingSwap = null; }
     st.floaters = st.floaters.filter(f => st.t - f.t < 1.3);
     if (S.autoReset && st.play.phase === 'over' && st.play.endT != null && st.t - st.play.endT > 2.6) reset();
+    watchIdleBall(dt);
   }
 
   function setSlotInputs(inputs: Record<string, SimInput> | null, hostSlotId: string | null) {

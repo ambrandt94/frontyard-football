@@ -54,7 +54,7 @@ describe('aim spec v1', () => {
       const n1 = ((i * 17) % 11) / 10 * 0.02 - 0.01;
       const n2 = ((i * 13) % 11) / 10 * 0.02 - 0.01;
       const stick = i < 30 ? { x: 0, y: 1 } : { x: n1, y: 1 + n2 };
-      const out = stepAim(state, sample(stick), 1 / 60, DEFAULTS, now);
+      const out = stepAim(state, sample(stick), 1 / 60, { ...DEFAULTS, aimMode: 'absolutePlus' }, now);
       if (i >= settle) pts.push({ x: out.x, y: out.y });
     }
     let mx = 0;

@@ -56,16 +56,17 @@ The controls card is a small overlay. The first visit shows it; after that it st
 | Start | Reset the play. As the receiver, Start makes the QB throw now. In Catch mode it pauses throws. |
 | D-pad left / right | Cycle the receiver's route. |
 | D-pad up | Next mode. |
+| D-pad down | Cycle the camera: close, medium, wide. |
 
 ### Keyboard and mouse
 
 | Input | Action |
 | --- | --- |
-| WASD | Move. Hold C for a jog. |
+| WASD | Move. Hold C for a jog. Tap C to cycle the camera (All-22, Top-down, Broadcast). |
 | Shift (tap) | Sprint pump (same as L3). |
 | Q | Square up (LT). |
-| Mouse | QB aim. In Direction charge the cursor picks the line and the left button charges the distance. Wheel zooms. |
-| Hold left mouse or F | Throw power. Release to throw. |
+| Mouse | QB aim. In Direction charge the cursor picks the line and the left button charges the distance. The wheel zooms every camera. `+` and `−` do the same. A corner widget has zoom, style, and reset. |
+| Hold left mouse or F | Throw power. Release to throw. On a gamepad, RT has to pass the engage mark before a charge starts, and the throw happens when it drops back under the release mark. A light hold does nothing. |
 | E / F | Receiver: catch / one-hand. E before the throw calls for the ball. |
 | V / Space | Plant (hold V to stretch). Space is jump, or snap before the play. |
 | Z / V | Pitch left / right (double-tap). Arrow keys are the right stick for a defender too. |
@@ -95,7 +96,7 @@ Settings are a versioned document:
 { "schemaVersion": 6, "host": { "accel": 30 }, "local": { "deadzone": 0.15 } }
 ```
 
-`host` is gameplay and physics (movement, sprint, throws, catching, carrier moves, tackling, AI, time scale, and the mode toggles). `local` stays on this machine: camera, renderer, player model, stick deadzone, and the TURN login. Time scale (the Play folder, or T) runs from 0.1× to 2× by taking fewer or more of the same 1/120 steps each real second. Buttons jump to 0.25×, 0.5×, and 1×. The HUD shows the scale whenever it is not 1×. In a room the host owns it. On load, unknown keys are ignored and missing keys are filled from the defaults. Older flat saves and schema 5 `{ "values": { ... } }` documents still load. A newer `schemaVersion` still merges the keys this build knows.
+`host` is gameplay and physics (movement, sprint, throws, catching, carrier moves, tackling, AI, time scale, and the mode toggles). `local` stays on this machine: camera, renderer, player model, stick deadzone, the RT engage and release marks, and the TURN login. Slider tracks are wider than the old ranges. A faint band on each track is the range that plays well, and the number dims when the value sits outside it. Time scale (the Play folder, or T) runs from 0.1× to 2× by taking fewer or more of the same 1/120 steps each real second. Buttons jump to 0.25×, 0.5×, and 1×. The HUD shows the scale whenever it is not 1×. In a room the host owns it. On load, unknown keys are ignored and missing keys are filled from the defaults. Older flat saves and schema 5 `{ "values": { ... } }` documents still load. A newer `schemaVersion` still merges the keys this build knows.
 
 The **Presets** folder adds:
 

@@ -6,6 +6,7 @@ export const LOCAL_KEYS = [
   'camStyle', 'camPitch', 'camFov', 'camHeightBias', 'camUpfieldBias',
   'playerScale', 'playerVisuals', 'modelHeightYd', 'modelOutline',
   'showReach', 'showArc', 'renderer', 'deadzone',
+  'rtEngage', 'rtRelease', 'rtMinHoldMs',
   'aimMode', 'aimDeadzone', 'aimMinDist', 'aimMaxDist', 'aimDistExp',
   'aimEuroMin', 'aimEuroBeta', 'aimAngleDeadband', 'aimGraceMs',
   'chargeMinDist', 'chargeMaxDist', 'chargeTime', 'chargeExp', 'chargePingPong',

@@ -282,6 +282,8 @@ export interface SimState {
   feedback: { text: string; color: string; t: number } | null;
   floaters: Floater[];
   route: string;
+  /** Seconds a dead ball has sat with nobody holding it. */
+  idleT: number;
   controlled: string;
   ctl: Record<ModeId, string>;
   ai: Record<string, AiBag>;

@@ -25,11 +25,21 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1a0e; fon
 #power { position: fixed; top: 46px; left: 50%; transform: translateX(-50%); width: 280px; background: var(--hud-bg); border: 1px solid var(--hud-line); padding: 6px 8px 3px; border-radius: 12px; pointer-events: none; display: none; }
 #power .bar { height: 12px; border-radius: 6px; background: linear-gradient(90deg, #4fc3f7, #fff176, #ff7043); position: relative; border: 1px solid #000; }
 #power .fill { position: absolute; top: -3px; width: 4px; height: 18px; background: #fff; border: 1px solid #000; left: 0; }
+#power .tick { position: absolute; top: -2px; width: 2px; height: 16px; background: #fff; opacity: .85; transform: translateX(-1px); box-shadow: 0 0 0 1px #000; }
 #power .lbl { display: flex; justify-content: space-between; font-size: 11px; margin-top: 3px; text-shadow: 0 1px 0 #000; }
 #floaters { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
 #floaters div { position: absolute; transform: translate(-50%, -100%); font-weight: 900; font-size: 20px; letter-spacing: 1px; white-space: nowrap; text-shadow: 0 2px 0 #000, 0 0 8px rgba(0, 0, 0, .8); }
 #toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--hud-bg); color: var(--hud-text); border: 1px solid var(--hud-line); padding: 6px 12px; border-radius: 999px; font-size: 12px; display: none; z-index: 45; }
 #controls-pill { position: fixed; left: 12px; bottom: 12px; z-index: 32; background: var(--hud-bg); color: var(--hud-muted); border: 1px solid var(--hud-line); border-radius: 999px; padding: 5px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+#cam-widget { position: fixed; right: 12px; bottom: 12px; z-index: 33; display: flex; gap: 4px; align-items: center; background: var(--hud-bg); border: 1px solid var(--hud-line); border-radius: 999px; padding: 4px; }
+#cam-widget button { background: transparent; color: var(--hud-text); border: 1px solid var(--hud-line); border-radius: 999px; min-width: 28px; height: 28px; padding: 0 8px; font: inherit; font-size: 13px; cursor: pointer; }
+#cam-widget button#cam-style { color: var(--hud-accent); }
+#zoom-flash { position: fixed; left: 50%; bottom: 18%; transform: translateX(-50%); z-index: 34; background: var(--hud-bg); color: var(--hud-accent); border: 1px solid var(--hud-line); border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 700; letter-spacing: .04em; opacity: 0; pointer-events: none; transition: opacity .2s; }
+#zoom-flash.show { opacity: 1; }
+.lil-controller.lil-number .lil-slider { position: relative; }
+.lil-controller .rec-band { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--number-color, #ffd54a) 18%, transparent); pointer-events: none; }
+.lil-controller.is-outside input { opacity: .55; }
+.lil-controller.is-outside .lil-name::after { content: ""; display: inline-block; width: 5px; height: 5px; margin-left: 6px; border-radius: 50%; background: var(--number-color, #ffd54a); vertical-align: middle; opacity: .8; }
 #controls-pill.hidden, #help.hidden { display: none; }
 #help.help-card { position: fixed; left: 12px; bottom: 12px; z-index: 32; width: min(380px, calc(100vw - 24px)); max-height: min(58vh, 460px); overflow: auto; pointer-events: auto; background: var(--hud-bg); color: var(--hud-text); border: 1px solid var(--hud-line); border-radius: 12px; padding: 10px 12px 12px; box-shadow: 0 12px 32px rgba(0, 0, 0, .35); font-size: 12px; line-height: 1.35; }
 .help-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }

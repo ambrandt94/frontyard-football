@@ -58,11 +58,63 @@ const panel = createPanel({
 const { gui, sandbox } = panel;
 
 addEventListener('resize', () => renderer.resize());
-viewEl.addEventListener('wheel', (e) => {
-  S.cameraMinExtent = clamp(Math.round(S.cameraMinExtent * (e.deltaY > 0 ? 1.08 : 1 / 1.08)), 15, 120);
-  panel.refresh();
+const ZOOM_STOPS = [18, 26, 42];
+const CAM_STYLES = ['all22', 'topdown', 'broadcast'] as const;
+let zoomFlashTimer = 0;
+function camStyleLabel(style: string) {
+  if (style === 'topdown') return 'Top-down';
+  if (style === 'broadcast') return 'Broadcast';
+  return 'All-22';
+}
+function flashZoom() {
+  const el = document.getElementById('zoom-flash');
+  const btn = document.getElementById('cam-style');
+  if (btn) btn.textContent = camStyleLabel(S.camStyle);
+  if (!el) return;
+  const stop = ZOOM_STOPS.find((n) => n === S.cameraMinExtent);
+  const name = stop === 18 ? 'Close' : stop === 26 ? 'Medium' : stop === 42 ? 'Wide' : `${Math.round(S.cameraMinExtent)} yd`;
+  el.textContent = `${camStyleLabel(S.camStyle)} · ${name}`;
+  el.classList.add('show');
+  window.clearTimeout(zoomFlashTimer);
+  zoomFlashTimer = window.setTimeout(() => el.classList.remove('show'), 900);
+}
+function applyZoom(next: number) {
+  S.cameraMinExtent = clamp(Math.round(next), 12, 120);
   saveSettings(browserStore(), S);
+  panel.refresh();
+  flashZoom();
+}
+function nudgeZoom(dir: number) {
+  applyZoom(S.cameraMinExtent * (dir > 0 ? 1.12 : 1 / 1.12));
+}
+function cycleZoomStop() {
+  const next = ZOOM_STOPS.find((n) => n > S.cameraMinExtent + 0.5);
+  applyZoom(next ?? ZOOM_STOPS[0]);
+}
+function cycleCamStyle() {
+  const i = CAM_STYLES.indexOf(S.camStyle as typeof CAM_STYLES[number]);
+  S.camStyle = CAM_STYLES[(i + 1) % CAM_STYLES.length];
+  saveSettings(browserStore(), S);
+  panel.refresh();
+  flashZoom();
+}
+function resetCamera() {
+  S.cameraMinExtent = DEFAULTS.cameraMinExtent;
+  S.cameraPadding = DEFAULTS.cameraPadding;
+  S.camStyle = DEFAULTS.camStyle;
+  saveSettings(browserStore(), S);
+  panel.refresh();
+  flashZoom();
+}
+viewEl.addEventListener('wheel', (e) => {
+  nudgeZoom(e.deltaY > 0 ? 1 : -1);
 }, { passive: true });
+document.getElementById('cam-zoom-in')?.addEventListener('click', () => nudgeZoom(-1));
+document.getElementById('cam-zoom-out')?.addEventListener('click', () => nudgeZoom(1));
+document.getElementById('cam-style')?.addEventListener('click', () => cycleCamStyle());
+document.getElementById('cam-reset')?.addEventListener('click', () => resetCamera());
+const camBtn = document.getElementById('cam-style');
+if (camBtn) camBtn.textContent = camStyleLabel(S.camStyle);
 
 const input = createInput(S, viewEl);
 const aimState = createAimState();
@@ -158,6 +210,9 @@ function frame(now: number) {
     saveSettings(browserStore(), S);
     panel.refresh();
   }
+  if (meta.zoom) nudgeZoom(meta.zoom);
+  if (meta.zoomStop) cycleZoomStop();
+  if (meta.cycleCam) cycleCamStyle();
   if (aimModeOf(S.aimMode) !== shownAim) {
     shownAim = aimModeOf(S.aimMode);
     aimHint = AIM_MODE_LABEL[shownAim];
@@ -232,9 +287,11 @@ function frame(now: number) {
   const guiW = gui._closed ? 0 : Math.min(vw * 0.5, gui.domElement.getBoundingClientRect().width + 10);
   const pad = S.cameraPadding;
   const aspect = (vw - guiW) / vh;
-  const needH = Math.max(S.cameraMinExtent, (y1 - y0) + 2 * pad, ((x1 - x0) + 2 * pad) / aspect);
+  // Top-down measures the ground point. The body hangs past it, so keep a couple of yards for the sprite.
+  const sprite = 2.2;
+  const needH = Math.max(S.cameraMinExtent, (y1 - y0) + 2 * (pad + sprite), ((x1 - x0) + 2 * (pad + sprite)) / aspect);
   const tx = (x0 + x1) / 2 + (guiW / 2) * (cam.ext / vh);
-  const ty = (y0 + y1) / 2 + 2;
+  const ty = (y0 + y1) / 2;
   const k = 1 - Math.exp(-S.cameraFollow * dt);
   cam.x += (tx - cam.x) * k;
   cam.y += (ty - cam.y) * k;

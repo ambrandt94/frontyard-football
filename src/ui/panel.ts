@@ -17,6 +17,7 @@ import {
   type PresetStore,
 } from '../config/settings';
 import { assignKeys, HOST_KEYS, isHostKey, LOCAL_KEYS } from '../config/groups';
+import { bindSliderBands } from './sliderBands';
 import { timeScaleOf } from '../config/timeScale';
 import { applyControlPreset, builtinPreset, BUILTIN_PRESETS } from '../config/presets';
 import { MODE_LABEL, MODE_LABELS, modeFromLabel, MP_MODE_IDS, type ModeId } from '../modes';
@@ -442,6 +443,9 @@ export function createPanel(opts: {
   fn.add(S, 'netTurnCred').name('TURN credential');
   const fv = gui.addFolder('View');
   fv.add(S, 'deadzone', 0, 0.5, 0.01).name('stick radial deadzone');
+  fv.add(S, 'rtEngage', 0.05, 0.85, 0.01).name('RT engage');
+  fv.add(S, 'rtRelease', 0, 0.5, 0.01).name('RT release');
+  fv.add(S, 'rtMinHoldMs', 0, 300, 5).name('RT min hold (ms)');
   fv.add(S, 'aimMode', { 'Absolute+': 'absolutePlus', 'Direction charge': 'directionCharge' }).name('aim mode (K)');
   fv.add(S, 'aimDeadzone', 0, 0.4, 0.01).name('aim deadzone');
   fv.add(S, 'aimMinDist', 1, 15, 0.5).name('absolute min (yd)');
@@ -493,14 +497,19 @@ export function createPanel(opts: {
   note.className = 'host-lock-note';
   note.textContent = 'Host controls this';
   gui.domElement.prepend(note);
+  let syncBands = () => {};
   gui.onChange((event) => {
+    syncBands();
     if (event.object === S && isHostKey(String(event.property))) schedulePush();
   });
   gui.onFinishChange(() => saveSettings(store, S));
   [ft, fc, fv, fn].forEach((f) => f.close());
   if (window.matchMedia('(max-width: 720px)').matches) gui.close();
 
-  function refresh() { gui.controllersRecursive().forEach((c) => c.updateDisplay()); }
+  function refresh() {
+    gui.controllersRecursive().forEach((c) => c.updateDisplay());
+    syncBands();
+  }
   function presetOptions() {
     const users = presetNames(presets).filter((name) => !builtinPreset(name));
     return [...BUILTIN_PRESETS.map((p) => p.name), ...users];
@@ -564,5 +573,7 @@ export function createPanel(opts: {
     }
   }
 
+  syncBands = bindSliderBands(gui);
+  syncBands();
   return { gui, sandbox, refresh, setMode, switchControl, syncLock };
 }

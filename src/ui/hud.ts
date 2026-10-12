@@ -169,7 +169,11 @@ export function updateHud(opts: {
   power.style.display = showPow ? 'block' : 'none';
   if (showPow && inp.charge !== null) {
     const fill = power.querySelector('.fill') as HTMLElement | null;
-    if (fill) fill.style.left = `${inp.charge * 296}px`;
+    const tick = power.querySelector('.tick') as HTMLElement | null;
+    const engage = Math.max(0, Math.min(0.9, S.rtEngage));
+    if (tick) tick.style.left = `${engage * 100}%`;
+    const mark = input.device === 'gamepad' ? engage + inp.charge * (1 - engage) : inp.charge;
+    if (fill) fill.style.left = `${mark * 100}%`;
     const powv = document.getElementById('powv');
     if (powv) powv.textContent = Math.round(inp.charge * 100) + '%';
   }

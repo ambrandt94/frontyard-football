@@ -2,6 +2,7 @@ import type { Settings } from '../config/defaults';
 import { ROUTES } from '../config/constants';
 import { radialDeadzone } from '../sim/math';
 import { blankInput, type SimInput } from '../sim/types';
+import { freshTrigger, stepTrigger } from './trigger';
 
 export interface InputMeta {
   switch: boolean;
@@ -16,6 +17,10 @@ export interface InputMeta {
   mode: boolean;
   posePreview: boolean;
   cycleAim: boolean;
+  /** -1 zooms in, 1 zooms out. */
+  zoom: number;
+  cycleCam: boolean;
+  zoomStop: boolean;
 }
 
 export interface PolledInput extends SimInput {
@@ -38,9 +43,9 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
   const mouse = { x: 0, y: 0, moved: false, down: false, downT: 0, released: null as number | null };
   let prevButtons: boolean[] = [];
   let prevRtv = 0;
-  let rtCharging = false;
-  let rtPeak = 0;
-  let rtLock = false;
+  let rtLatch = freshTrigger();
+  let cAt = 0;
+  let cJog = false;
   let aimMode: 'stick' | 'mouse' = 'stick';
   let aimOffset = { x: 0, y: 12 };
   let lastDevice = 'keyboard';
@@ -58,6 +63,7 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
   addEventListener('keyup', (e) => {
     keys.delete(e.code);
     if (e.code === 'KeyF') edges.add('KeyF-up');
+    if (e.code === 'KeyC') edges.add('KeyC-up');
   });
   addEventListener('blur', () => keys.clear());
   view.addEventListener('mousemove', (e) => { mouse.x = e.clientX; mouse.y = e.clientY; mouse.moved = true; aimMode = 'mouse'; });
@@ -87,7 +93,7 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
     mouse,
     poll() {
       const inp = blankInput() as PolledInput;
-      const meta: InputMeta = { switch: false, reset: false, start: false, routeDelta: 0, route: null, toggleRenderer: false, toggleHelp: false, toggleGui: false, cycleTime: false, mode: false, posePreview: false, cycleAim: false };
+      const meta: InputMeta = { switch: false, reset: false, start: false, routeDelta: 0, route: null, toggleRenderer: false, toggleHelp: false, toggleGui: false, cycleTime: false, mode: false, posePreview: false, cycleAim: false, zoom: 0, cycleCam: false, zoomStop: false };
       const pad = getPad();
       let padMove: { x: number; y: number } | null = null;
       let aimStick: { x: number; y: number } | null = null;
@@ -110,16 +116,15 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
         inp.x = E(2);
         inp.b = E(1);
         const rt = V(7);
-        inp.rt = rt > 0.5 && !(prevRtv > 0.5);
-        if (rtLock && rt < 0.06) rtLock = false;
-        if (!rtLock) {
-          if (!rtCharging && rt > 0.1) { rtCharging = true; rtPeak = rt; }
-          if (rtCharging) {
-            rtPeak = Math.max(rtPeak, rt);
-            inp.charge = clampCharge((rtPeak - 0.1) / 0.88);
-            if (rt < 0.06 || rt < rtPeak - 0.25 || rtPeak >= 0.99) { inp.throwPower = inp.charge; rtCharging = false; rtLock = true; }
-          }
-        }
+        const pulled = stepTrigger(rtLatch, rt, performance.now(), prevRtv, {
+          engage: S.rtEngage,
+          release: S.rtRelease,
+          minHoldMs: S.rtMinHoldMs,
+        });
+        rtLatch = pulled.latch;
+        inp.rt = pulled.catchEdge;
+        if (pulled.charge !== null) inp.charge = pulled.charge;
+        if (pulled.throwPower !== null) inp.throwPower = pulled.throwPower;
         const nowMs = performance.now();
         const back = B(8);
         const startBtn = B(9);
@@ -156,6 +161,7 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
         if (E(15)) meta.routeDelta = 1;
         if (E(14)) meta.routeDelta = -1;
         if (E(12)) meta.mode = true;
+        if (E(13)) meta.zoomStop = true;
         if (R.m > 0) inp.rs = { x: R.x, y: -R.y };
         inp.lbHeld = B(4);
         inp.rbHeld = B(5);
@@ -191,6 +197,15 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
       ROUTES.forEach((name, i) => { if (i < 9 && e(`Digit${i + 1}`)) meta.route = name; });
       if (e('KeyM')) meta.toggleRenderer = true;
       if (e('KeyK')) meta.cycleAim = true;
+      if (e('Equal') || e('NumpadAdd')) meta.zoom = -1;
+      if (e('Minus') || e('NumpadSubtract')) meta.zoom = 1;
+      if (e('KeyC')) { cAt = now; cJog = km > 0 || !!padMove; }
+      if (keys.has('KeyC') && (km > 0 || !!padMove)) cJog = true;
+      if (e('KeyC-up')) {
+        if (cAt && now - cAt < 280 && !cJog) meta.cycleCam = true;
+        cAt = 0;
+        cJog = false;
+      }
       if (e('KeyH')) meta.toggleHelp = true;
       if (e('KeyG')) meta.toggleGui = true;
       if (e('KeyT')) meta.cycleTime = true;
