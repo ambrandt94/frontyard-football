@@ -74,7 +74,7 @@ function sampleArc(arc: SimState['ball']['arc']): Snapshot['ball']['arc'] {
   return out;
 }
 
-function packPlayer(p: Player): SnapPlayer {
+function packPlayer(p: Player, wind: boolean): SnapPlayer {
   return {
     id: p.id,
     role: p.role,
@@ -89,11 +89,26 @@ function packPlayer(p: Player): SnapPlayer {
     groundT: p.groundT,
     jumpT: p.jumpT,
     spinVis: p.spinVis || 0,
+    hand: p.hand === 'L' ? 'L' : 'R',
+    sw: p.handSwitchT || 0,
+    act: p.attempt ? p.attempt.type : '',
+    actR: p.attempt ? p.attempt.radius : 0,
+    stiff: p.stiffArm === 'L' || p.stiffArm === 'R' ? p.stiffArm : '',
+    tk: p.tackle ? p.tackle.kind : '',
+    wind,
+    punch: p.punchCD || 0,
+    stretch: p.stretch || 0,
+    sreach: p.stretchReach || 0,
+    lean: p.leanDir || 0,
+    plant: p.planted ? (p.planted.falling ? 2 : 1) : 0,
   };
 }
 
 export function packSnapshot(st: SimState): Snapshot {
   const b = st.ball;
+  const arm = st.throwArm;
+  const winding = !!arm && (arm.phase === 'charge' || arm.phase === 'window' || arm.pumpUntil > st.t
+    || (st.mode === 'catch' && st.cm?.phase === 'windup'));
   return {
     t: st.t,
     mode: st.mode,
@@ -109,7 +124,7 @@ export function packSnapshot(st: SimState): Snapshot {
       landing: b.landing ? { x: b.landing.x, y: b.landing.y } : null,
       arc: sampleArc(b.arc),
     },
-    players: Object.values(st.players).map(packPlayer),
+    players: Object.values(st.players).map((p) => packPlayer(p, winding && b.holder === p.id)),
     stats: { ...st.stats },
     cov: { ...st.cov },
     carry: st.carry ? { ...st.carry } : null,
@@ -170,6 +185,18 @@ export function present(st: SimState, older: Snapshot, newer: Snapshot, alpha: n
     p.groundT = np.groundT;
     p.jumpT = np.jumpT;
     p.spinVis = np.spinVis;
+    p.hand = np.hand === 'L' ? 'L' : 'R';
+    p.handSwitchT = np.sw || 0;
+    p.visWind = !!np.wind;
+    p.punchCD = np.punch || 0;
+    p.stretch = np.stretch || 0;
+    p.stretchReach = np.sreach || 0;
+    p.leanDir = np.lean || p.facing;
+    const act = np.act === 'two' || np.act === 'one' || np.act === 'bat' ? np.act : '';
+    p.attempt = act ? { type: act, t0: newer.t, win: 2, radius: np.actR || 0 } : null;
+    p.stiffArm = np.stiff === 'L' || np.stiff === 'R' ? np.stiff : null;
+    p.tackle = np.tk === 'wrap' || np.tk === 'dive' || np.tk === 'lunge' ? { kind: np.tk, t0: newer.t, done: false } : null;
+    p.planted = np.plant ? { t0: newer.t, x: p.x, y: p.y, said: true, falling: np.plant === 2, dir: np.lean || p.facing } : null;
   }
   const ob = older.ball, nb = newer.ball;
   const ballJump = ob.state !== nb.state || ob.holder !== nb.holder || Math.hypot(nb.x - ob.x, nb.y - ob.y) > 12;

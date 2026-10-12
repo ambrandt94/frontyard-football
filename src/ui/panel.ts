@@ -498,6 +498,8 @@ export function createPanel(opts: {
   fv.add(S, 'playerScale', 0.8, 2, 0.05).name('player visual scale');
   fv.add(S, 'playerVisuals', ['model', 'capsule']).name('Player visuals (3D)');
   fv.add(S, 'modelOutline').name('model outline');
+  fv.add(S, 'armIk').name('Arm IK');
+  fv.add(S, 'armIkDebug').name('Draw IK targets');
   fv.add(sandbox, 'posePreview').name('Pose preview (P)').listen();
   fv.add(S, 'cameraFollow', 0.5, 12, 0.1).name('camera follow');
   fv.add(S, 'showReach').name('show WR reach ring');

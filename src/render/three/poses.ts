@@ -94,7 +94,7 @@ export function poseTargets(p: Player, st: PoseWorld, view: PoseView) {
     if (p.attempt) add(p.attempt.type === 'two' ? 'catchTwo' : 'catchOne');
     else if (p.callT != null && t - p.callT < 0.9) add('callHand');
     if (p.role === 'QB') {
-      const wind = (view.qbCharge != null && b.holder === p.id) || (st.mode === 'catch' && st.cm && st.cm.phase === 'windup');
+      const wind = (view.qbCharge != null && b.holder === p.id) || !!p.visWind || (st.mode === 'catch' && st.cm && st.cm.phase === 'windup');
       if (wind) add('throwWindup');
       else if (b.state === 'air' && !b.pitch && t - b.throwT < 0.35) add('throwRelease');
     }

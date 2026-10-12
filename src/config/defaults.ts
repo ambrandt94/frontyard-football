@@ -266,6 +266,10 @@ export interface Settings {
   playerVisuals: 'model' | 'capsule';
   modelHeightYd: number;
   modelOutline: boolean;
+  /** Aim the posed arms, and seat a held ball on the hand. This machine only. */
+  armIk: boolean;
+  /** Draw the arm IK targets. This machine only. */
+  armIkDebug: boolean;
   showReach: boolean;
   showArc: boolean;
   autoReset: boolean;
@@ -491,6 +495,8 @@ export const DEFAULTS: Settings = {
   playerVisuals: 'model',
   modelHeightYd: 2.0,
   modelOutline: true,
+  armIk: true,
+  armIkDebug: false,
   showReach: true,
   showArc: true,
   autoReset: true,

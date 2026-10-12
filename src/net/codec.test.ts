@@ -39,6 +39,24 @@ describe('net codec', () => {
     expect(sim.state.players.wr.y).toBeCloseTo(first.players.find((p) => p.id === 'wr')!.y + 5);
     expect(sim.state.ball.holder).toBe('wr');
     expect(sim.state.ball.y).toBeCloseTo(second.ball.y);
+    const qb = sim.state.players.qb;
+    qb.hand = 'L';
+    qb.attempt = { type: 'one', t0: 0, win: 0.2, radius: 1.4 };
+    qb.stiffArm = 'R';
+    qb.visWind = true;
+    sim.state.throwArm.phase = 'charge';
+    sim.state.ball.holder = 'qb';
+    const packed = packSnapshot(sim.state);
+    const snapQb = packed.players.find((p) => p.id === 'qb');
+    expect(snapQb?.hand).toBe('L');
+    expect(snapQb?.act).toBe('one');
+    expect(snapQb?.wind).toBe(true);
+    expect(snapQb?.stiff).toBe('R');
+    present(sim.state, packed, packed, 1);
+    expect(sim.state.players.qb.hand).toBe('L');
+    expect(sim.state.players.qb.attempt?.type).toBe('one');
+    expect(sim.state.players.qb.visWind).toBe(true);
+    expect(sim.state.players.qb.stiffArm).toBe('R');
   });
 
   it('rejects junk and keeps gameplay settings free of the camera', () => {

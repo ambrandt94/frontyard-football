@@ -49,6 +49,22 @@ export interface SnapPlayer {
   groundT: number;
   jumpT: number;
   spinVis: number;
+  /** Ball hand. Clients aim the carry at this arm. */
+  hand: 'L' | 'R';
+  /** Seconds left in a handoff across the body. */
+  sw: number;
+  /** Catch or bat attempt. Empty when the hands are not reaching. */
+  act: '' | 'two' | 'one' | 'bat';
+  actR: number;
+  stiff: '' | 'L' | 'R';
+  tk: '' | 'wrap' | 'dive' | 'lunge';
+  wind: boolean;
+  punch: number;
+  stretch: number;
+  sreach: number;
+  lean: number;
+  /** 0 none, 1 toe-tap plant, 2 falling out of it. */
+  plant: 0 | 1 | 2;
 }
 
 export interface Snapshot {

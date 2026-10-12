@@ -402,6 +402,13 @@ function frame(now: number) {
     p.handX = h.x;
     p.handY = h.y;
   }
+  const netClient = session.phase === 'play' && session.role === 'client';
+  if (!netClient) {
+    const arm = st.throwArm;
+    const winding = arm.phase === 'charge' || arm.phase === 'window' || arm.pumpUntil > st.t
+      || (st.mode === 'catch' && !!st.cm && st.cm.phase === 'windup');
+    for (const id in st.players) st.players[id].visWind = winding && st.ball.holder === id;
+  }
   const cmw = st.mode === 'catch' && st.cm?.phase === 'windup' ? st.cm : null;
   viewState = {
     cue: cmw && qb ? { x: qb.x, y: qb.y, frac: clamp((st.t - cmw.windupStart) / Math.max(0.01, cmw.windupEnd - cmw.windupStart), 0, 1) } : null,

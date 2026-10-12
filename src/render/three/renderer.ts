@@ -11,6 +11,7 @@ import type { FieldRenderer, ViewState } from '../types';
 import { buildPixelStadium, CLASSIC_SKY, PIXEL_SKY, type PixelStadium } from './stadium';
 import { makeModelInstance, MODEL, type ModelInstance } from './model';
 import { poseModel } from './poses';
+import { orientBall, placeHeldBall, poseArms, sheetActor, type ArmPose } from './armIk';
 
 interface PlayerView {
   g: THREE.Group;
@@ -27,6 +28,8 @@ interface PlayerView {
   callHand: THREE.Mesh;
   callArm: THREE.Mesh;
   model: ModelInstance | null;
+  armPose: ArmPose | null;
+  propBall: THREE.Group | null;
 }
 
 interface LineHandle {
@@ -42,7 +45,7 @@ const SHEET_POSES: Array<[string, string, SheetExtra?]> = [
   ['stance', 'WR'], ['run', 'WR', { pose: 'run', speed: 7 }], ['sprint', 'WR', { pose: 'sprint', speed: 9.5, boost: 1.5 }], ['squared', 'DF'], ['throwWindup', 'QB'], ['throwRelease', 'QB'],
   ['catchTwo', 'WR'], ['catchOne', 'WR'], ['callHand', 'WR'], ['jump', 'WR', { z: 0.5 }], ['dive', 'WR', { lying: 1 }], ['stretch', 'WR', { lean: 0.6 }],
   ['fall', 'WR', { lean: 1.1 }], ['stiffL', 'RB'], ['stiffR', 'RB'], ['truck', 'RB', { lean: 0.45 }], ['hurdle', 'RB', { z: 0.6 }], ['tackle', 'DF'],
-  ['ground', 'DF', { lying: 1 }], ['spin', 'RB', { pose: 'run', speed: 6, turn: 2.2 }], ['carryR', 'RB', { pose: 'carryR' }], ['plant', 'WR'],
+  ['ground', 'DF', { lying: 1 }], ['spin', 'RB', { pose: 'run', speed: 6, turn: 2.2 }], ['carryR', 'RB', { pose: 'carryR' }], ['carryL', 'RB', { pose: 'carryL' }], ['plant', 'WR'],
 ];
 
 function basic(mesh: THREE.Mesh): THREE.MeshBasicMaterial {
@@ -77,6 +80,15 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
   let pixelStadium: PixelStadium | null = null;
   let shownField: string | null = null;
   let trails: LineHandle[] = [];
+  const ikDots: THREE.Mesh[] = [];
+  const ikDotGeo = new THREE.SphereGeometry(0.055, 8, 6);
+  const releaseFrom = new THREE.Vector3();
+  const releaseFromQ = new THREE.Quaternion();
+  const airQuat = new THREE.Quaternion();
+  const simBall = new THREE.Vector3();
+  let hadHold = false;
+  let releaseStart = -1;
+  const ikPoints: { x: number; y: number; z: number; color: number }[] = [];
 
   function makePlayer(color: number): PlayerView {
     const g = new THREE.Group();
@@ -128,7 +140,36 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
     callArm.position.set(0, 2.25, 0.4);
     body.add(callArm);
     scene.add(g, shadow, sel, reach);
-    return { g, body, capG, team, shadow, sel, reach, armL, armR, mat, helmetMat, callHand, callArm, model: null };
+    return { g, body, capG, team, shadow, sel, reach, armL, armR, mat, helmetMat, callHand, callArm, model: null, armPose: null, propBall: null };
+  }
+
+  function propFootball(): THREE.Group {
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 12), new THREE.MeshStandardMaterial({ color: 0x8d4b1f, roughness: 0.5 }));
+    mesh.scale.set(0.42, 0.26, 0.26);
+    const lace = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.03, 0.04), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    lace.position.y = 0.13;
+    const g = new THREE.Group();
+    g.add(mesh, lace);
+    scene.add(g);
+    return g;
+  }
+
+  function drawIk(points: { x: number; y: number; z: number; color: number }[]) {
+    const on = S.armIkDebug && S.armIk;
+    while (ikDots.length < points.length) {
+      const m = new THREE.Mesh(ikDotGeo, new THREE.MeshBasicMaterial({ depthTest: false, transparent: true, opacity: 0.95 }));
+      m.renderOrder = 12;
+      m.frustumCulled = false;
+      scene.add(m);
+      ikDots.push(m);
+    }
+    for (let i = 0; i < ikDots.length; i++) {
+      const p = points[i];
+      ikDots[i].visible = on && !!p;
+      if (!p) continue;
+      ikDots[i].position.set(p.x, p.y, p.z);
+      basic(ikDots[i]).color.setHex(p.color);
+    }
   }
 
   function makeLine(color: number, n = 512, opacity = 1): LineHandle {
@@ -270,7 +311,10 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
       const x = 14 + col * 5;
       const y = 64 - row * 5.5;
       v.g.visible = v.shadow.visible = v.team.visible = on;
-      if (!on || !v.model) return;
+      if (!on || !v.model) {
+        if (v.propBall) v.propBall.visible = false;
+        return;
+      }
       const p = {
         x, y, z: 0, vx: 0, vy: 0, role, facing: -Math.PI / 2 + ((extra && extra.turn) || 0),
         forcePose: (extra && extra.pose) || name, forceSpeed: extra && extra.speed, forcePhase: 1.3,
@@ -288,6 +332,20 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
       basic(v.team).color.setHex(aiLook(role, []).jersey);
       v.model.ol.visible = S.modelOutline;
       poseModel(v.model, p, { t: 0, ball: { holder: null, state: 'held', throwT: 0 }, mode: 'sheet' }, view);
+      const posed = (extra && extra.pose) || name;
+      if (S.armIk) {
+        const act = sheetActor(posed, x, y, p.facing);
+        v.armPose = poseArms(v.model, act.player, { t: 0.05, mode: 'sheet', ball: act.ball, players: act.players }, { charge: false, snap: true, tune: S });
+        if (!v.propBall) v.propBall = propFootball();
+        const held = v.armPose.anchor ? placeHeldBall(v.model, v.armPose.anchor) : null;
+        const mark = held ? held.pos : v.armPose.air;
+        v.propBall.visible = !!mark;
+        if (mark) {
+          v.propBall.position.set(mark.x, mark.y, mark.z);
+          if (held && v.armPose.anchor) orientBall(v.armPose.anchor.kind, held, v.propBall.quaternion);
+        }
+        if (v.armPose.debug.length) ikPoints.push(...v.armPose.debug);
+      } else if (v.propBall) v.propBall.visible = false;
       sheetLabelList.push({ text: name, x, y: y - 1.6 });
     });
     if (on) {
@@ -417,6 +475,7 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
       camera.updateProjectionMatrix();
     },
     sync(st, view) {
+      ikPoints.length = 0;
       placeCamera(view);
       applyFieldStyle();
       if (pixelStadium && shownField === 'pixel') pixelStadium.fade(camera.position.x);
@@ -475,6 +534,10 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
         const lean = p.move && p.move.type === 'truck' ? 0.45 : (p.stretch || 0) * 0.6 + (p.planted && p.planted.falling ? 0.5 : 0);
         v.body.rotation.z = -Math.max(lying * Math.PI / 2 * 0.95, lean);
         v.body.position.y = lying * 0.45;
+        if (S.armIk && useModel && v.model && v.model.holder.visible && !view.poseSheet) {
+          v.armPose = poseArms(v.model, p, st, { charge: view.qbCharge != null && st.ball.holder === p.id, tune: S });
+          if (v.armPose.debug.length) ikPoints.push(...v.armPose.debug);
+        } else v.armPose = null;
         v.shadow.position.set(p.x, 0.02, -p.y);
         const ss = (1 - p.z * 0.3) * S.playerScale;
         v.shadow.scale.set(ss, ss, ss);
@@ -501,14 +564,41 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
         }
       }
       const b = st.ball;
-      ball.position.set(b.x, b.z, -b.y);
+      simBall.set(b.x, b.z, -b.y);
+      const holder = b.state === 'held' && b.holder ? players[b.holder] : undefined;
+      const anchored = !!(S.armIk && holder?.armPose?.anchor && holder.model && holder.model.holder.visible);
+      const held = anchored && holder?.armPose?.anchor && holder.model ? placeHeldBall(holder.model, holder.armPose.anchor) : null;
+      if (held && holder?.armPose?.anchor) {
+        ball.position.set(held.pos.x, held.pos.y, held.pos.z);
+        orientBall(holder.armPose.anchor.kind, held, ball.quaternion);
+        releaseFrom.copy(ball.position);
+        releaseFromQ.copy(ball.quaternion);
+        hadHold = true;
+        releaseStart = -1;
+        if (S.armIkDebug) ikPoints.push({ x: held.pos.x, y: held.pos.y, z: held.pos.z, color: 0xffee58 });
+      } else if (hadHold && b.state === 'air') {
+        if (releaseStart < 0) releaseStart = st.t;
+        const u = clamp((st.t - releaseStart) / 0.12, 0, 1);
+        const s = u * u * (3 - 2 * u);
+        ball.position.lerpVectors(releaseFrom, simBall, s);
+        const sp = Math.hypot(b.vx, b.vy, b.vz);
+        if (sp > 0.5) {
+          const d = new THREE.Vector3(b.vx, b.vz, -b.vy).normalize();
+          airQuat.setFromUnitVectors(new THREE.Vector3(1, 0, 0), d);
+          ball.quaternion.copy(releaseFromQ).slerp(airQuat, s);
+        }
+        if (u >= 1) hadHold = false;
+      } else {
+        ball.position.copy(simBall);
+        hadHold = false;
+        const sp = Math.hypot(b.vx, b.vy, b.vz);
+        if (sp > 0.5) {
+          const d = new THREE.Vector3(b.vx, b.vz, -b.vy).normalize();
+          ball.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), d);
+        }
+      }
       const hs = 1 + b.z * 0.05;
       ball.scale.set(hs, hs, hs);
-      const sp = Math.hypot(b.vx, b.vy, b.vz);
-      if (sp > 0.5) {
-        const d = new THREE.Vector3(b.vx, b.vz, -b.vy).normalize();
-        ball.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), d);
-      }
       ballShadow.position.set(b.x, 0.025, -b.y);
       const bs = 1 + b.z * 0.08;
       ballShadow.scale.set(bs, bs, bs);
@@ -542,6 +632,7 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
         L.set(tr.pts);
       });
       for (let i = view.trails.length; i < trails.length; i++) trails[i].show(false);
+      drawIk(ikPoints);
     },
     render() { renderer.render(scene, camera); },
     fieldToScreen(x, y, z = 0) {

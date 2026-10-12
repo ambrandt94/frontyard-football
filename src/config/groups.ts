@@ -4,7 +4,7 @@ import { DEFAULTS, isSettingsKey, type Settings } from './defaults';
 export const LOCAL_KEYS = [
   'cameraMinExtent', 'cameraPadding', 'cameraFollow',
   'camStyle', 'camPitch', 'camFov', 'camHeightBias', 'camUpfieldBias', 'fieldStyle',
-  'playerScale', 'playerVisuals', 'modelHeightYd', 'modelOutline',
+  'playerScale', 'playerVisuals', 'modelHeightYd', 'modelOutline', 'armIk', 'armIkDebug',
   'showReach', 'showArc', 'renderer', 'deadzone',
   'rtEngage', 'rtRelease', 'rtMinHoldMs',
   'aimMode', 'aimDeadzone', 'aimMinDist', 'aimMaxDist', 'aimDistExp',

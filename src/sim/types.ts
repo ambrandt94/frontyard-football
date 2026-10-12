@@ -168,6 +168,8 @@ export interface Player {
   rbWasHeld?: boolean;
   handX?: number;
   handY?: number;
+  /** Visual only. The quarterback is in the throwing motion. Clients get this from the snapshot. */
+  visWind?: boolean;
   forcePose?: string;
   forceSpeed?: number;
   forcePhase?: number;
