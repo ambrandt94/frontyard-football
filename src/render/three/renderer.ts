@@ -7,6 +7,7 @@ import type { Player } from '../../sim/types';
 import { PLAYER_COLORS } from '../colors';
 import { makeFieldCanvas } from '../field';
 import type { FieldRenderer, ViewState } from '../types';
+import { buildPixelStadium, CLASSIC_SKY, PIXEL_SKY, type PixelStadium } from './stadium';
 import { makeModelInstance, MODEL, type ModelInstance } from './model';
 import { poseModel } from './poses';
 
@@ -70,6 +71,10 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
   let cue: THREE.Mesh = null!;
   let los: THREE.Mesh = null!;
   let goal: THREE.Mesh = null!;
+  let classicApron: THREE.Mesh = null!;
+  let classicField: THREE.Mesh = null!;
+  let pixelStadium: PixelStadium | null = null;
+  let shownField: string | null = null;
   let trails: LineHandle[] = [];
 
   function makePlayer(color: number): PlayerView {
@@ -314,6 +319,17 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
     camera.updateMatrixWorld();
   }
 
+  function applyFieldStyle() {
+    const pixel = S.fieldStyle !== 'classic';
+    if (shownField === (pixel ? 'pixel' : 'classic')) return;
+    shownField = pixel ? 'pixel' : 'classic';
+    classicApron.visible = !pixel;
+    classicField.visible = !pixel;
+    if (pixelStadium) pixelStadium.group.visible = pixel;
+    const sky = scene.background;
+    if (sky instanceof THREE.Color) sky.setHex(pixel ? PIXEL_SKY : CLASSIC_SKY);
+  }
+
   const api: FieldRenderer = {
     name: 'three',
     init(container) {
@@ -322,24 +338,27 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
       renderer.setPixelRatio(Math.min(2, devicePixelRatio));
       el.appendChild(renderer.domElement);
       scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x10301a);
+      scene.background = new THREE.Color(PIXEL_SKY);
       camera = new THREE.PerspectiveCamera(CAM_FOV, 1, 1, 400);
       camera.up.set(0, 0, -1);
       scene.add(new THREE.HemisphereLight(0xffffff, 0x335533, 1.6));
       const sun = new THREE.DirectionalLight(0xffffff, 1.6);
       sun.position.set(-20, 60, 25);
       scene.add(sun);
-      const apron = new THREE.Mesh(new THREE.PlaneGeometry(FIELD_W + 24, FIELD_L + 24), new THREE.MeshStandardMaterial({ color: 0x1f5a26 }));
-      apron.rotation.x = -Math.PI / 2;
-      apron.position.set(FIELD_W / 2, -0.02, -FIELD_L / 2);
-      scene.add(apron);
+      classicApron = new THREE.Mesh(new THREE.PlaneGeometry(FIELD_W + 24, FIELD_L + 24), new THREE.MeshStandardMaterial({ color: 0x1f5a26 }));
+      classicApron.rotation.x = -Math.PI / 2;
+      classicApron.position.set(FIELD_W / 2, -0.02, -FIELD_L / 2);
+      scene.add(classicApron);
       const tex = new THREE.CanvasTexture(makeFieldCanvas(20));
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
-      const field = new THREE.Mesh(new THREE.PlaneGeometry(FIELD_W, FIELD_L), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95 }));
-      field.rotation.x = -Math.PI / 2;
-      field.position.set(FIELD_W / 2, 0, -FIELD_L / 2);
-      scene.add(field);
+      classicField = new THREE.Mesh(new THREE.PlaneGeometry(FIELD_W, FIELD_L), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95 }));
+      classicField.rotation.x = -Math.PI / 2;
+      classicField.position.set(FIELD_W / 2, 0, -FIELD_L / 2);
+      scene.add(classicField);
+      pixelStadium = buildPixelStadium();
+      scene.add(pixelStadium.group);
+      applyFieldStyle();
       los = new THREE.Mesh(new THREE.PlaneGeometry(FIELD_W, 0.3), new THREE.MeshBasicMaterial({ color: 0x40a9ff }));
       los.rotation.x = -Math.PI / 2;
       los.position.set(FIELD_W / 2, 0.015, -LOS_Y);
@@ -396,6 +415,8 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
     },
     sync(st, view) {
       placeCamera(view);
+      applyFieldStyle();
+      if (pixelStadium && shownField === 'pixel') pixelStadium.fade(camera.position.x);
       syncSheet(view);
       los.visible = st.mode === 'throw' || st.mode === 'coverage';
       const goalY = st.carry?.goalY ?? 110;

@@ -471,6 +471,7 @@ export function createPanel(opts: {
   fv.add(S, 'cameraMinExtent', 15, 120, 1).name('camera zoom: min yards visible').listen();
   fv.add(S, 'cameraPadding', 0, 20, 0.5).name('framing padding (yd)');
   fv.add(S, 'camStyle', { 'All-22': 'all22', 'Top-down': 'topdown', Broadcast: 'broadcast' }).name('camera style');
+  fv.add(S, 'fieldStyle', { 'Pixel stadium': 'pixel', Classic: 'classic' }).name('Field style');
   fv.add(S, 'camPitch', 32, 64, 1).name('camera pitch°');
   fv.add(S, 'camFov', 26, 62, 1).name('camera FOV°');
   fv.add(S, 'camHeightBias', 0.8, 1.7, 0.02).name('camera height');

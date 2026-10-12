@@ -131,6 +131,8 @@ describe('settings schema', () => {
     for (const key of HOST_KEYS) expect(local.has(key)).toBe(false);
     expect(local.has('deadzone')).toBe(true);
     expect(local.has('camStyle')).toBe(true);
+    expect(local.has('fieldStyle')).toBe(true);
+    expect(DEFAULTS.fieldStyle).toBe('pixel');
     expect(local.has('camPitch')).toBe(true);
     expect(local.has('camFov')).toBe(true);
     expect(local.has('camHeightBias')).toBe(true);

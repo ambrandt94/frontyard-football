@@ -252,6 +252,8 @@ export interface Settings {
   cameraFollow: number;
   /** 3D camera. The flat field stays top-down. */
   camStyle: 'all22' | 'topdown' | 'broadcast';
+  /** Three.js field. The flat renderer ignores this. */
+  fieldStyle: 'pixel' | 'classic';
   /** Degrees down from the horizon. All-22 and the sideline view. */
   camPitch: number;
   /** Vertical field of view, degrees. */
@@ -478,6 +480,7 @@ export const DEFAULTS: Settings = {
   cameraPadding: 5,
   cameraFollow: 3.0,
   camStyle: 'all22',
+  fieldStyle: 'pixel',
   camPitch: 42,
   camFov: 36,
   camHeightBias: 1.12,
@@ -499,6 +502,7 @@ const ENUMS: Partial<Record<keyof Settings, readonly string[]>> = {
   playerVisuals: ['model', 'capsule'],
   renderer: ['three', 'canvas2d'],
   camStyle: ['all22', 'topdown', 'broadcast'],
+  fieldStyle: ['pixel', 'classic'],
   aimMode: ['absolutePlus', 'directionCharge'],
   covAlign: ['press', 'off'],
   covShade: ['inside', 'outside'],

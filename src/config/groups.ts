@@ -3,7 +3,7 @@ import { DEFAULTS, isSettingsKey, type Settings } from './defaults';
 /** This machine only. Not sent to other players, and not overwritten when the host syncs. */
 export const LOCAL_KEYS = [
   'cameraMinExtent', 'cameraPadding', 'cameraFollow',
-  'camStyle', 'camPitch', 'camFov', 'camHeightBias', 'camUpfieldBias',
+  'camStyle', 'camPitch', 'camFov', 'camHeightBias', 'camUpfieldBias', 'fieldStyle',
   'playerScale', 'playerVisuals', 'modelHeightYd', 'modelOutline',
   'showReach', 'showArc', 'renderer', 'deadzone',
   'rtEngage', 'rtRelease', 'rtMinHoldMs',
