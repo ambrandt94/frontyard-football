@@ -15,6 +15,10 @@ export interface SimInput {
   charge: number | null;
   /** Analog RT, 0–1. The throw arm on the sim reads this. One-hand catch stays on `rt`. */
   trigger: number;
+  /** Right stick is out of neutral, or the mouse button is still the aim for this frame. */
+  stickHeld: boolean;
+  /** R3 / L edge. Flips throw aim and carrier moves. */
+  modeToggle: boolean;
   throwPower: number | null;
   y: boolean;
   rt: boolean;
@@ -30,7 +34,7 @@ export interface SimInput {
 
 export function blankInput(): SimInput {
   return {
-    mx: 0, my: 0, lt: false, sprint: false, aim: null, charge: null, trigger: 0, throwPower: null,
+    mx: 0, my: 0, lt: false, sprint: false, aim: null, charge: null, trigger: 0, stickHeld: false, modeToggle: false, throwPower: null,
     y: false, rt: false, rb: false, a: false, x: false, b: false, start: false, rs: null,
     lbHeld: false, rbHeld: false,
   };
@@ -163,6 +167,12 @@ export interface Player {
   lungeReady?: boolean;
   punchCD: number;
   dove: boolean;
+  /** What the right stick does while this player has the ball. */
+  stickMode: 'throw' | 'carry';
+  /** Sim time the QB pitch window closes. 0 when it is shut. */
+  pitchUntil: number;
+  /** Flick captured inside the pitch window. */
+  pitchFlick: Flick | null;
   callCD?: number;
   callT?: number;
   rbWasHeld?: boolean;
@@ -396,17 +406,19 @@ export interface StepFactor {
   err: number;
 }
 
-export type ThrowPhase = 'idle' | 'charge' | 'window';
-export type ThrowAction = 'bullet' | 'lob' | 'pump' | 'cancel' | null;
+export type ThrowPhase = 'idle' | 'charge';
+export type ThrowAction = 'throw' | 'cancel' | null;
 
-/** Deterministic charge / lob-window / pump arm. Sim time, not the wall clock. */
+/** Analog RT charge. Release throws. A neutral right stick cancels. */
 export interface ThrowArm {
   phase: ThrowPhase;
   since: number;
-  lock: Vec2 | null;
   prev: number;
+  /** Highest trigger reading during this charge. */
+  peak: number;
   /** Ignore the trigger until it drops below the release mark. */
   wait: boolean;
-  pumpUntil: number;
-  last: 'none' | 'bullet' | 'lob' | 'pump' | 'brush' | 'cancel';
+  last: 'none' | 'throw' | 'brush' | 'cancel';
+  /** Power of the last throw, 0 loft through 1 bullet. */
+  power: number;
 }

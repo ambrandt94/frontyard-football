@@ -10,8 +10,8 @@ import { MODE_LABEL, MP_MODE_IDS, nextMode, type ModeId } from './modes';
 import { clamp, rad } from './sim/math';
 import { aiLook, loadLook } from './sim/look';
 import { createSim } from './sim/sim';
-import { freshThrowArm, stepThrowArm, throwTune } from './sim/throwArm';
-import type { SimInput, ThrowPhase, Vec2 } from './sim/types';
+import { freshThrowArm, stepThrowArm, throwPower, throwTune } from './sim/throwArm';
+import type { SimInput, ThrowPhase } from './sim/types';
 import { AIM_MODE_LABEL, aimModeOf, createAimState, nextAimMode, resampleArc, stepAim } from './input/aim';
 import { createInput } from './input/input';
 import { updateStickHud } from './ui/stickHud';
@@ -124,7 +124,7 @@ if (camBtn) camBtn.textContent = camStyleLabel(S.camStyle);
 const input = createInput(S, viewEl);
 const aimState = createAimState();
 let armPhase: ThrowPhase = 'idle';
-let armLock: Vec2 | null = null;
+let armPeak = 0;
 let clientArm = freshThrowArm();
 let clientT = 0;
 let clientAcc = 0;
@@ -257,7 +257,7 @@ function frame(now: number) {
       charging: inp.charge !== null,
       pressure: inp.charge,
       cancel: !!inp.b,
-      hold: armPhase === 'window' || (armPhase === 'charge' && (inp.trigger || 0) < S.rtRelease),
+      hold: false,
     }, dt, S, now / 1000);
     if (aimed.suppressThrow) {
       inp.throwPower = null;
@@ -270,6 +270,16 @@ function frame(now: number) {
       previewLoft = aimed.previewLoft;
       previewPoint = { x: aimed.previewX, y: aimed.previewY };
     }
+    const carryStick = thrower.stickMode === 'carry';
+    const stickAim = inp.stickHeld || inp.aimSpec.mode === 'mouse';
+    if (carryStick || !stickAim) {
+      inp.aim = null;
+      if (st.ball.holder === thrower.id) {
+        reticle = null;
+        aimGuide = null;
+        previewPoint = null;
+      }
+    }
   }
   if (window.__netInput) Object.assign(inp, window.__netInput);
   if (!reticle && st.ball.state === 'air' && st.ball.aimed) reticle = st.ball.aimed;
@@ -279,7 +289,7 @@ function frame(now: number) {
     acc += dt * timeScaleOf(S.timeScale);
     let first = true;
     while (acc >= STEP) {
-      const i: SimInput = first ? inp : { ...inp, sprint: false, y: false, rt: false, rb: false, a: false, x: false, b: false, start: false, throwPower: null };
+      const i: SimInput = first ? inp : { ...inp, sprint: false, y: false, rt: false, rb: false, a: false, x: false, b: false, start: false, modeToggle: false, throwPower: null };
       sim.step(STEP, i);
       first = false;
       acc -= STEP;
@@ -357,43 +367,30 @@ function frame(now: number) {
     const tune = throwTune(S);
     let guard = 0;
     while (clientAcc >= STEP && guard++ < 8) {
-      const out = stepThrowArm(clientArm, inp.trigger || 0, inp.aim, !!inp.b, clientT + STEP, tune);
+      const out = stepThrowArm(clientArm, inp.trigger || 0, inp.aim, !!inp.stickHeld && thrower?.stickMode !== 'carry', clientT + STEP, tune);
       clientArm = out.arm;
       clientT += STEP;
       clientAcc -= STEP;
-      if (out.action === 'pump' && thrower) {
-        st.floaters.push({ text: 'PUMP', x: thrower.x, y: thrower.y + 1.2, t: clientT, color: '#ffe0b2' });
-        thrower.forcePose = 'throwWindup';
-      }
     }
-    if (thrower && clientArm.pumpUntil > 0 && clientT >= clientArm.pumpUntil && thrower.forcePose === 'throwWindup') delete thrower.forcePose;
-    else if (thrower && clientT < clientArm.pumpUntil) thrower.forcePose = 'throwWindup';
     armPhase = clientArm.phase;
-    armLock = clientArm.lock;
+    armPeak = clientArm.peak;
   } else {
     armPhase = st.throwArm.phase;
-    armLock = st.throwArm.lock;
+    armPeak = st.throwArm.peak;
     clientArm = freshThrowArm();
     clientT = st.t;
     clientAcc = 0;
   }
-  input.setArmPhase(armPhase);
-  if (thrower && st.ball.holder === thrower.id && (armLock || inp.aim)) {
-    if (armPhase === 'window' && armLock) {
-      previewLoft = 0;
-      previewPoint = armLock;
-    } else if (armPhase === 'charge' && inp.aim) {
-      previewLoft = 1;
-      previewPoint = inp.aim;
-    }
+  if (thrower && st.ball.holder === thrower.id && armPhase === 'charge' && inp.aim && thrower.stickMode !== 'carry') {
+    previewLoft = throwPower(Math.max(armPeak, inp.trigger || 0), S.rtEngage);
+    previewPoint = inp.aim;
   }
 
   const qb = st.players.qb;
   let preview = null;
   let previewRing: { x: number; y: number; r: number } | null = null;
   if (previewPoint) {
-    const style = armPhase === 'window' ? 'lob' as const : armPhase === 'charge' ? 'bullet' as const : undefined;
-    const arc = sim.previewThrow(previewLoft, previewPoint, style).arc;
+    const arc = sim.previewThrow(previewLoft, previewPoint).arc;
     const end = arc[arc.length - 1];
     preview = resampleArc(arc, 32);
     if (end) previewRing = { x: end.x, y: end.y, r: 0.58 };
@@ -426,7 +423,7 @@ function frame(now: number) {
   const netClient = session.phase === 'play' && session.role === 'client';
   if (!netClient) {
     const arm = st.throwArm;
-    const winding = arm.phase === 'charge' || arm.phase === 'window' || arm.pumpUntil > st.t
+    const winding = arm.phase === 'charge'
       || (st.mode === 'catch' && !!st.cm && st.cm.phase === 'windup');
     for (const id in st.players) st.players[id].visWind = winding && st.ball.holder === id;
   }

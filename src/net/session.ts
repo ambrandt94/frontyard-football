@@ -12,7 +12,7 @@ import { readSignal, roomLink } from './signal';
 import { defaultSlot, makeRoomCode, slotsFor } from './slots';
 import { aiLook, loadLook, parseLook, saveLook, type Look } from '../sim/look';
 import { applyGameplay, gameplaySettings, iceServers } from './sync';
-import type { InputFrame, NetMsg, NetTransport, RosterName, Seat, Snapshot } from './types';
+import { BTN, type InputFrame, type NetMsg, type NetTransport, type RosterName, type Seat, type Snapshot } from './types';
 
 const TICK = 1 / 60;
 const SNAP_EVERY = 3;
@@ -542,6 +542,8 @@ export function createSession(opts: { sim: Sim; S: Settings; onChange: () => voi
       throwPower: null, aim: pendingAim, rs: pendingRs,
     }, sendSeq);
     frame.buttons = pendingButtons;
+    if (latestAxes.stickHeld) frame.buttons |= BTN.stickHeld;
+    else frame.buttons &= ~BTN.stickHeld;
     frame.throwPower = pendingThrow;
     send(hostPeerId, { t: 'input', frame });
     pendingButtons = 0;
@@ -779,5 +781,6 @@ function mergeEdges(prev: SimInput, next: SimInput): SimInput {
   merged.lbHeld = next.lbHeld || prev.lbHeld;
   merged.rbHeld = next.rbHeld || prev.rbHeld;
   if (merged.throwPower == null) merged.throwPower = prev.throwPower;
+  merged.modeToggle = next.modeToggle || prev.modeToggle;
   return merged;
 }

@@ -13,6 +13,8 @@ export function packButtons(inp: SimInput): number {
   if (inp.start) n |= BTN.start;
   if (inp.lbHeld) n |= BTN.lb;
   if (inp.rbHeld) n |= BTN.rbHeld;
+  if (inp.stickHeld) n |= BTN.stickHeld;
+  if (inp.modeToggle) n |= BTN.modeToggle;
   return n;
 }
 
@@ -27,6 +29,8 @@ export function applyButtons(inp: SimInput, bits: number) {
   inp.start = !!(bits & BTN.start);
   inp.lbHeld = !!(bits & BTN.lb);
   inp.rbHeld = !!(bits & BTN.rbHeld);
+  inp.stickHeld = !!(bits & BTN.stickHeld);
+  inp.modeToggle = !!(bits & BTN.modeToggle);
 }
 
 export function inputToFrame(inp: SimInput, seq: number): InputFrame {
@@ -60,7 +64,7 @@ export function frameToInput(frame: InputFrame): SimInput {
 
 /** Second 1/120 substep of a 60 Hz tick: keep axes and the analog trigger, drop edges so a throw or snap does not repeat. */
 export function stripEdges(inp: SimInput): SimInput {
-  return { ...inp, sprint: false, y: false, rt: false, rb: false, a: false, x: false, b: false, start: false, throwPower: null };
+  return { ...inp, sprint: false, y: false, rt: false, rb: false, a: false, x: false, b: false, start: false, modeToggle: false, throwPower: null };
 }
 
 function sampleArc(arc: SimState['ball']['arc']): Snapshot['ball']['arc'] {
@@ -74,7 +78,7 @@ function sampleArc(arc: SimState['ball']['arc']): Snapshot['ball']['arc'] {
   return out;
 }
 
-function packPlayer(p: Player, wind: boolean): SnapPlayer {
+function packPlayer(p: Player, wind: boolean, now: number): SnapPlayer {
   return {
     id: p.id,
     role: p.role,
@@ -101,13 +105,15 @@ function packPlayer(p: Player, wind: boolean): SnapPlayer {
     sreach: p.stretchReach || 0,
     lean: p.leanDir || 0,
     plant: p.planted ? (p.planted.falling ? 2 : 1) : 0,
+    stick: p.stickMode === 'carry' ? 1 : 0,
+    pitch: p.pitchUntil > now ? Math.max(0, p.pitchUntil - now) : 0,
   };
 }
 
 export function packSnapshot(st: SimState): Snapshot {
   const b = st.ball;
   const arm = st.throwArm;
-  const winding = !!arm && (arm.phase === 'charge' || arm.phase === 'window' || arm.pumpUntil > st.t
+  const winding = !!arm && (arm.phase === 'charge'
     || (st.mode === 'catch' && st.cm?.phase === 'windup'));
   return {
     t: st.t,
@@ -124,7 +130,7 @@ export function packSnapshot(st: SimState): Snapshot {
       landing: b.landing ? { x: b.landing.x, y: b.landing.y } : null,
       arc: sampleArc(b.arc),
     },
-    players: Object.values(st.players).map((p) => packPlayer(p, winding && b.holder === p.id)),
+    players: Object.values(st.players).map((p) => packPlayer(p, winding && b.holder === p.id, st.t)),
     stats: { ...st.stats },
     cov: { ...st.cov },
     carry: st.carry ? { ...st.carry } : null,
@@ -143,6 +149,7 @@ function stub(src: SnapPlayer): Player {
     pitchPending: null, bufferedFlick: null, handTapUndo: null, planted: null, stretch: 0, stretchReach: 0, leanDir: src.facing,
     hand: 'R', handSwitchT: 0, move: null, moveCD: 0, vulnT: 0, reaccelT: 0, spinVis: 0,
     stiffArm: null, stiffHit: false, stunT: 0, tackle: null, tackleCD: 0, punchCD: 0, dove: false,
+    stickMode: 'throw', pitchUntil: 0, pitchFlick: null,
   };
 }
 
@@ -198,6 +205,8 @@ export function present(st: SimState, older: Snapshot, newer: Snapshot, alpha: n
     p.stiffArm = np.stiff === 'L' || np.stiff === 'R' ? np.stiff : null;
     p.tackle = np.tk === 'wrap' || np.tk === 'dive' || np.tk === 'lunge' ? { kind: np.tk, t0: newer.t, done: false } : null;
     p.planted = np.plant ? { t0: newer.t, x: p.x, y: p.y, said: true, falling: np.plant === 2, dir: np.lean || p.facing } : null;
+    p.stickMode = np.stick === 1 ? 'carry' : 'throw';
+    p.pitchUntil = np.pitch > 0 ? newer.t + np.pitch : 0;
   }
   const ob = older.ball, nb = newer.ball;
   const ballJump = ob.state !== nb.state || ob.holder !== nb.holder || Math.hypot(nb.x - ob.x, nb.y - ob.y) > 12;

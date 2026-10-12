@@ -59,7 +59,7 @@ describe('aim hint in the sim', () => {
     const s = boot();
     const qb = s.state.players.qb;
     const aim = { x: qb.x + 3.4, y: qb.y + 22.4 };
-    frames(s, 0.3, { trigger: 0.55, aim });
+    frames(s, 0.3, { trigger: 0.55, aim, stickHeld: true });
     const hint = s.state.aimHint;
     expect(hint?.id).toBe('qb');
     const cell = aimCell(DEFAULTS.aimFuzzRadius);
@@ -69,18 +69,10 @@ describe('aim hint in the sim', () => {
     expect(Math.hypot(hint!.sx - aim.x, hint!.sy - aim.y)).toBeLessThan(cell);
 
     const far = { x: qb.x - 8, y: qb.y + 48 };
-    s.step(STEP, press({ trigger: 0.55, aim: far }));
+    s.step(STEP, press({ trigger: 0.55, aim: far, stickHeld: true }));
     expect(Math.hypot(s.state.aimHint!.sx - far.x, s.state.aimHint!.sy - far.y)).toBeGreaterThan(6);
 
-    s.step(STEP, press({ trigger: 0, aim }));
-    expect(s.state.throwArm.phase).toBe('window');
-    const lock = { ...s.state.throwArm.lock! };
-    frames(s, 0.12, { trigger: 0, aim: far });
-    expect(s.state.throwArm.phase).toBe('window');
-    expect(Math.hypot(s.state.aimHint!.sx - lock.x, s.state.aimHint!.sy - lock.y)).toBeLessThan(cell);
-    expect(Math.hypot(s.state.aimHint!.x - far.x, s.state.aimHint!.y - far.y)).toBeGreaterThan(10);
-
-    frames(s, 0.05, { trigger: 1, aim });
+    s.step(STEP, press({ trigger: 0, aim, stickHeld: true }));
     expect(s.state.ball.state).toBe('air');
     expect(s.state.aimHint).toBeNull();
   });
@@ -88,7 +80,7 @@ describe('aim hint in the sim', () => {
   it('stays off when the host disables it, and shows during an AI quarterback windup', () => {
     const off = boot({ showAimFuzz: false });
     const qb = off.state.players.qb;
-    frames(off, 0.2, { trigger: 0.55, aim: { x: qb.x, y: qb.y + 18 } });
+    frames(off, 0.2, { trigger: 0.55, aim: { x: qb.x, y: qb.y + 18 }, stickHeld: true });
     expect(off.state.aimHint).toBeNull();
 
     const s = createSim({ ...DEFAULTS, requireSnap: false, autoReset: false, catchWindup: 5 }, { rng: mulberry32(2) });

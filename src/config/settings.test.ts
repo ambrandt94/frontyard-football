@@ -56,7 +56,7 @@ describe('settings schema', () => {
     expect(loadSettings(store).accel).toBe(18);
     expect(loadSettings(store).catchPaused).toBe(true);
     const saved = JSON.parse(store.data['tdfb.sandbox.settings.v1']);
-    expect(saved.schemaVersion).toBe(7);
+    expect(saved.schemaVersion).toBe(8);
     expect(saved.host.accel).toBe(18);
     expect(saved.host.deadzone).toBeUndefined();
     expect(saved.local.deadzone).toBe(DEFAULTS.deadzone);
@@ -77,7 +77,7 @@ describe('settings schema', () => {
     expect(presetSettings(loaded, 'Deep balls')?.jogSpeed).toBe(DEFAULTS.jogSpeed);
     const remaining = deletePreset(loaded, 'Arcade');
     expect(presetSettings(remaining, 'Arcade')).toBeNull();
-    expect(toDocument(custom).schemaVersion).toBe(7);
+    expect(toDocument(custom).schemaVersion).toBe(8);
   });
 
   it('reads schema 5 values bags and schema 6 host/local bags', () => {
@@ -107,6 +107,10 @@ describe('settings schema', () => {
     expect(keptAim.aimMode).toBe('directionCharge');
     expect(keptAim.cameraMinExtent).toBe(55);
 
+    const from7 = mergeSettings({ schemaVersion: 7, host: { accel: 19 } });
+    expect(from7.accel).toBe(19);
+    expect(from7.pitchWindow).toBe(DEFAULTS.pitchWindow);
+    expect(from7.catchDiveGap).toBe(DEFAULTS.catchDiveGap);
     const chosen = mergeSettings({ schemaVersion: 7, local: { aimMode: 'absolutePlus', cameraMinExtent: 40 } });
     expect(chosen.aimMode).toBe('absolutePlus');
     expect(chosen.cameraMinExtent).toBe(40);
@@ -146,8 +150,12 @@ describe('settings schema', () => {
     expect(local.has('rtRelease')).toBe(true);
     expect(local.has('rtMinHoldMs')).toBe(true);
     expect(local.has('previewDefaultLoft')).toBe(true);
-    expect(local.has('lobWindow')).toBe(false);
-    expect(recommendedRange('lobWindow', 0.3)).toEqual([0.2, 0.5]);
+    expect(local.has('pitchWindow')).toBe(false);
+    expect(local.has('catchDiveGap')).toBe(false);
+    expect(recommendedRange('pitchWindow', 0.4)).toEqual([0.25, 0.55]);
+    expect(recommendedRange('catchDiveGap', 1.25)).toEqual([0.75, 2]);
+    expect(recommendedRange('pitchFlickNear', 0.85)).toEqual([0.8, 0.95]);
+    expect(recommendedRange('pitchFlickFar', 1.15)).toEqual([1.05, 1.25]);
     expect(local.has('accel')).toBe(false);
   });
 });

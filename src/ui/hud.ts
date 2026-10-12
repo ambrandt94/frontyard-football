@@ -22,6 +22,15 @@ export function sprintMeter(boost: number, hold: number, fast: boolean, S: Setti
   return `<div class="row sprint-row"><span>Sprint</span><span class="pips" style="--c:${color}" title="${title}">${pips}</span><b class="sprint-readout">${Math.round(pct * 100)}%<small>${detail}</small></b></div>`;
 }
 
+function stickRow(st: SimState): string {
+  const id = st.ball.state === 'held' ? st.ball.holder : null;
+  const p = id ? st.players[id] : undefined;
+  if (!p || (p.role !== 'QB' && st.mode !== 'free')) return '';
+  const mode = p.stickMode === 'carry' ? 'CARRY' : 'THROW';
+  const pitching = (p.pitchUntil || 0) > st.t;
+  return `<div class="row" id="stick-mode"><span>Stick</span><b>${mode}${pitching ? ' · PITCH' : ''}</b></div>`;
+}
+
 export function updateHud(opts: {
   st: SimState;
   S: Settings;
@@ -96,6 +105,7 @@ export function updateHud(opts: {
     <div class="row"><span>${holder?.role === 'DF' ? 'Return' : 'YAC'}</span><b>${st.carry ? st.carry.yac.toFixed(1) + ' yd' : '—'}</b></div>
     <div class="row"><span>${holder?.role === 'DF' ? 'To home' : 'To end zone'}</span><b>${toLine == null ? '—' : toLine.toFixed(1) + ' yd'}</b></div>
     <div class="row"><span>Speed</span><b>${sp.toFixed(1)} yd/s</b></div>
+    ${stickRow(st)}
     ${meter}
     <div class="row"><span>State</span><b>${flags}</b></div>
     <div class="row"><span>Play</span><b>${st.play.phase}</b></div>
@@ -108,6 +118,7 @@ export function updateHud(opts: {
     <div class="row"><span>Ball</span><b>${st.ball.holder ? (st.players[st.ball.holder]?.name || st.ball.holder) : st.ball.state}</b></div>
     <div class="row"><span>You</span><b>${me.name || st.controlled}</b></div>
     <div class="row"><span>On the field</span><b>${n}</b></div>
+    ${stickRow(st)}
     <div class="row"><span>Speed</span><b>${sp.toFixed(1)} yd/s</b></div>
     ${meter}
     <div class="row"><span>State</span><b>${flags}</b></div>
@@ -147,6 +158,7 @@ export function updateHud(opts: {
     <div class="row"><span>YAC</span><b>${st.carry ? st.carry.yac.toFixed(1) + ' yd' : (st.stats.yacTotal ? st.stats.lastYac.toFixed(1) + ' yd' : '—')}</b></div>
     <div class="row"><span>${lineLabel}</span><b>${toLine == null ? st.stats.yacTotal.toFixed(1) + ' yd' : toLine.toFixed(1) + ' yd'}</b></div>
     <div class="row"><span>Speed</span><b>${sp.toFixed(1)} yd/s</b></div>
+    ${stickRow(st)}
     ${meter}
     <div class="row"><span>State</span><b>${flags}</b></div>
     <div class="row"><span>Play</span><b>${st.play.phase}</b></div>
@@ -193,6 +205,16 @@ export function updateFloaters(opts: {
     html += `<div style="left:${s.x}px;top:${s.y - age * 40}px;color:${f.color};opacity:${clamp(1.3 - age, 0, 1)}">${esc(f.text)}</div>`;
   }
   for (const p of Object.values(st.players)) {
+    const showStick = st.ball.holder === p.id && st.ball.state === 'held' && (p.role === 'QB' || st.mode === 'free');
+    if (showStick) {
+      const s = renderer.fieldToScreen(p.x, p.y, 3.2);
+      const carry = p.stickMode === 'carry';
+      html += `<div class="modechip ${carry ? 'carry' : 'throw'}" id="mode-chip" style="left:${s.x}px;top:${s.y}px">${carry ? 'CARRY' : 'THROW'}</div>`;
+      if ((p.pitchUntil || 0) > st.t) {
+        const left = Math.max(0, p.pitchUntil - st.t);
+        html += `<div class="modechip pitch" id="pitch-chip" style="left:${s.x}px;top:${s.y + 22}px">PITCH ${left.toFixed(2)}</div>`;
+      }
+    }
     if (!p.name) continue;
     const s = renderer.fieldToScreen(p.x, p.y, 2.5);
     const col = p.tint != null ? '#' + p.tint.toString(16).padStart(6, '0') : '#fff';

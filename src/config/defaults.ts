@@ -20,24 +20,16 @@ export interface Settings {
   deadzone: number;
   /** Gamepad RT must pass this before a throw charge or a one-hand catch counts. */
   rtEngage: number;
-  /** After RT engages, dropping below this ends the charge and opens the lob window. */
+  /** After RT engages, dropping below this releases the throw. */
   rtRelease: number;
-  /** A trigger brush shorter than this never opens the lob window, milliseconds. */
+  /** A trigger brush shorter than this throws nothing, milliseconds. */
   rtMinHoldMs: number;
-  /** While charging, RT at or above this throws a bullet immediately. */
-  bulletSqueeze: number;
-  /** During the lob window, crossing this throws the lob. */
-  lobPress: number;
-  /** Seconds after a release to press for a lob. After that, the throw is a pump fake. */
-  lobWindow: number;
   /** Bullet launch angle, degrees. Speed is solved so the pass reaches the spot. */
   bulletAngleDeg: number;
   /** Lob launch angle, degrees. Speed is solved so the pass reaches the spot. */
   lobAngleDeg: number;
   /** Random angle added to a live bullet or lob, degrees. The preview uses zero. */
   throwVarianceDeg: number;
-  /** Chance an AI defender steps toward a pump-fake target. */
-  pumpBite: number;
   /** Absolute+ or direction charge. Local to this player. */
   aimMode: 'absolutePlus' | 'directionCharge';
   /** Radial deadzone used only for aiming. Movement still uses `deadzone`. */
@@ -91,6 +83,8 @@ export interface Settings {
   diveDuration: number;
   diveRecovery: number;
   diveReachBonus: number;
+  /** Extra yards past a running catch before the receiver dives. */
+  catchDiveGap: number;
   plantLockout: number;
   batReach: number;
   aiTimingErrorMs: number;
@@ -178,6 +172,14 @@ export interface Settings {
   fallExtraReach: number;
   fallRecovery: number;
   doubleTapWindow: number;
+  /** Seconds the QB can flick a pitch after squeezing RT with the stick centered. */
+  pitchWindow: number;
+  /** Yards a mid flick travels. Flick speed scales this. */
+  pitchDistance: number;
+  /** Distance scale for a gentle flick. */
+  pitchFlickNear: number;
+  /** Distance scale for a full flick. */
+  pitchFlickFar: number;
   pitchFlickWindow: number;
   pitchMinSpeed: number;
   pitchMaxSpeed: number;
@@ -318,13 +320,9 @@ export const DEFAULTS: Settings = {
   rtEngage: 0.35,
   rtRelease: 0.12,
   rtMinHoldMs: 80,
-  bulletSqueeze: 0.95,
-  lobPress: 0.9,
-  lobWindow: 0.3,
   bulletAngleDeg: 8,
   lobAngleDeg: 35,
   throwVarianceDeg: 1.5,
-  pumpBite: 0.45,
   aimMode: 'directionCharge',
   aimDeadzone: 0.12,
   aimMinDist: 3,
@@ -363,6 +361,7 @@ export const DEFAULTS: Settings = {
   diveDuration: 0.32,
   diveRecovery: 0.8,
   diveReachBonus: 0.7,
+  catchDiveGap: 1.25,
   plantLockout: 0.1,
   batReach: 1.4,
   aiTimingErrorMs: 45,
@@ -442,6 +441,10 @@ export const DEFAULTS: Settings = {
   fallExtraReach: 0.5,
   fallRecovery: 1.2,
   doubleTapWindow: 0.25,
+  pitchWindow: 0.4,
+  pitchDistance: 8,
+  pitchFlickNear: 0.85,
+  pitchFlickFar: 1.15,
   pitchFlickWindow: 0.15,
   pitchMinSpeed: 7,
   pitchMaxSpeed: 15,

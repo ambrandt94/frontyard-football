@@ -45,4 +45,4 @@ export const GOAL_Y = 110;
 export const SETTINGS_KEY = 'tdfb.sandbox.settings.v1';
 export const PRESETS_KEY = 'tdfb.sandbox.presets.v1';
 /** Wrapped settings documents. Flat prototype saves and schema 5 `{ values }` bags still load. */
-export const SETTINGS_SCHEMA_VERSION = 7;
+export const SETTINGS_SCHEMA_VERSION = 8;

@@ -1,8 +1,7 @@
 import type { Settings } from '../config/defaults';
 import { ROUTES } from '../config/constants';
 import { markStickDirty, shapeStick, stickCal, tickStickCal, type StickReading } from './stick';
-import { throwTune } from '../sim/throwArm';
-import { blankInput, type SimInput, type ThrowPhase } from '../sim/types';
+import { blankInput, type SimInput } from '../sim/types';
 import { freshTrigger, stepTrigger } from './trigger';
 
 export interface InputMeta {
@@ -36,8 +35,6 @@ export interface InputController {
   readonly aimMode: string;
   mouse: { x: number; y: number; moved: boolean; down: boolean; downT: number; released: number | null };
   poll(): { inp: PolledInput; meta: InputMeta };
-  /** Last throw-arm phase, so a second click during the lob window sends a lob press. */
-  setArmPhase(phase: ThrowPhase): void;
 }
 
 function fieldStick(r: StickReading): StickReading {
@@ -57,9 +54,6 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
   let prevButtons: boolean[] = [];
   let prevRtv = 0;
   let rtLatch = freshTrigger();
-  let armPhase: ThrowPhase = 'idle';
-  let leftEdge = false;
-  let rightEdge = false;
   let cAt = 0;
   let cJog = false;
   let aimMode: 'stick' | 'mouse' = 'stick';
@@ -84,8 +78,8 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
   addEventListener('blur', () => keys.clear());
   view.addEventListener('mousemove', (e) => { mouse.x = e.clientX; mouse.y = e.clientY; mouse.moved = true; aimMode = 'mouse'; });
   view.addEventListener('mousedown', (e) => {
-    if (e.button === 2) { rightEdge = true; lastDevice = 'keyboard'; }
-    if (e.button === 0) { leftEdge = true; mouse.down = true; mouse.downT = performance.now(); mouse.x = e.clientX; mouse.y = e.clientY; aimMode = 'mouse'; lastDevice = 'keyboard'; }
+    if (e.button === 2) { lastDevice = 'keyboard'; }
+    if (e.button === 0) { mouse.down = true; mouse.downT = performance.now(); mouse.x = e.clientX; mouse.y = e.clientY; aimMode = 'mouse'; lastDevice = 'keyboard'; }
   });
   addEventListener('mouseup', (e) => {
     if (e.button === 0 && mouse.down) { mouse.down = false; mouse.released = (performance.now() - mouse.downT) / 1000; }
@@ -107,7 +101,6 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
     get device() { return lastDevice; },
     get aimMode() { return aimMode; },
     mouse,
-    setArmPhase(phase: ThrowPhase) { armPhase = phase; },
     poll() {
       tickStickCal();
       const inp = blankInput() as PolledInput;
@@ -182,6 +175,7 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
         if (E(12)) meta.mode = true;
         if (E(13)) meta.zoomStop = true;
         if (R.m > 0) inp.rs = { x: R.x, y: R.y };
+        if (E(11)) inp.modeToggle = true;
         inp.lbHeld = B(4);
         inp.rbHeld = B(5);
         if (pad.buttons.some((b) => b.pressed)) lastDevice = 'gamepad';
@@ -203,19 +197,9 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
       inp.x = inp.x || e('KeyX');
       inp.b = inp.b || e('KeyB');
       const now = performance.now();
-      const tune = throwTune(S);
-      const cap = Math.min(tune.bulletSqueeze, tune.lobPress) - 0.04;
-      const mid = cap <= tune.engage ? tune.engage + 0.01 : tune.engage + (cap - tune.engage) * 0.55;
-      const lobSpike = Math.min(1, tune.lobPress + 0.02);
+      const mouseHeld = mouse.down || mouse.released !== null;
       let mouseT = 0;
-      if (mouse.down) {
-        if (leftEdge && armPhase === 'window' && !keys.has('KeyF')) mouseT = lobSpike;
-        else mouseT = keys.has('KeyF') ? 1 : mid;
-      }
-      if (rightEdge && armPhase === 'window') mouseT = Math.max(mouseT, lobSpike);
-      leftEdge = false;
-      rightEdge = false;
-      if (mouse.released !== null) mouse.released = null;
+      if (mouse.down) mouseT = keys.has('KeyF') ? 1 : Math.min(0.99, Math.max(S.rtEngage + 0.08, 0.55));
       const trigger = Math.max(inp.trigger, mouseT);
       const pulled = stepTrigger(rtLatch, trigger, now, prevRtv, {
         engage: S.rtEngage,
@@ -224,7 +208,7 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
       });
       rtLatch = pulled.latch;
       inp.trigger = trigger;
-      if (pulled.latch.charging) inp.charge = trigger;
+      if (mouse.released !== null) mouse.released = null;
       if (e('Tab')) meta.switch = true;
       if (e('KeyR')) meta.reset = true;
       if (e('Enter')) meta.start = true;
@@ -242,6 +226,7 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
         cAt = 0;
         cJog = false;
       }
+      if (e('KeyL')) inp.modeToggle = true;
       if (e('KeyH')) meta.toggleHelp = true;
       if (e('KeyG')) meta.toggleGui = true;
       if (e('KeyT')) meta.cycleTime = true;
@@ -256,6 +241,8 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
         if (!arrowT) arrowT = now;
         if (now - arrowT > 60 && !inp.rs) { const am = Math.hypot(ax, ay); inp.rs = { x: ax / am, y: ay / am }; }
       } else arrowT = 0;
+      inp.stickHeld = !!inp.rs || mouseHeld;
+      if (pulled.latch.charging && inp.stickHeld) inp.charge = pulled.charge;
       inp.start = meta.start;
       inp.aimStick = aimStick;
       inp.aimSpec = aimMode === 'mouse' ? { mode: 'mouse', x: mouse.x, y: mouse.y } : { mode: 'stick', offset: aimOffset };

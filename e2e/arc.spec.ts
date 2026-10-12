@@ -54,9 +54,10 @@ test('local throw arc is a thin dotted preview, and other players see a fuzzy ai
     Object.assign(st.ball, { state: 'held', holder: 'qb', x: qb.x, y: qb.y, z: 0, vx: 0, vy: 0, vz: 0 });
     st.controlled = 'qb';
     st.play.phase = 'live';
-    st.throwArm.phase = 'window';
-    st.throwArm.lock = { x: 30, y: 54 };
+    st.throwArm.phase = 'charge';
+    st.throwArm.peak = 0;
     st.aimHint = null;
+    window.__net!.setInput({ aim: { x: qb.x + 4, y: qb.y + 22 }, trigger: 0, stickHeld: true });
   });
   await page.waitForTimeout(700);
   const lob = await page.evaluate(() => {
@@ -89,9 +90,9 @@ test('local throw arc is a thin dotted preview, and other players see a fuzzy ai
     box.S.arcStyle = 'dotted';
     const st = box.state;
     st.throwArm.phase = 'charge';
-    st.throwArm.lock = null;
+    st.throwArm.peak = 1;
     const qb = st.players.qb;
-    window.__net!.setInput({ aim: { x: qb.x + 6, y: qb.y + 24 }, trigger: 0.62 });
+    window.__net!.setInput({ aim: { x: qb.x + 6, y: qb.y + 24 }, trigger: 1, stickHeld: true });
   });
   await page.waitForTimeout(400);
   const bullet = await page.evaluate(() => {
@@ -186,7 +187,7 @@ test('local throw arc is a thin dotted preview, and other players see a fuzzy ai
       return { x: w.x + 1.3, y: w.y + 4.7 };
     });
     await host.page.evaluate((aim) => {
-      window.__net!.setInput({ aim, trigger: 0.6, lt: true });
+      window.__net!.setInput({ aim, trigger: 1, stickHeld: true, lt: true });
     }, spot);
     await expect.poll(() => guest.page.evaluate(() => window.__sandbox.view?.aimFuzz?.radius ?? 0), { timeout: 8000 }).toBeGreaterThanOrEqual(3);
     await expect.poll(() => host.page.evaluate(() => window.__sandbox.view?.previewLoft ?? -1)).toBe(1);
@@ -264,7 +265,7 @@ declare global {
   interface Window {
     __netSignal?: { host: string; port: number; path: string; secure: boolean };
     __net?: {
-      setInput(partial: { aim?: { x: number; y: number }; trigger?: number; lt?: boolean } | null): void;
+      setInput(partial: { aim?: { x: number; y: number }; trigger?: number; lt?: boolean; stickHeld?: boolean } | null): void;
       session: {
         phase: string;
         players: { name: string; slot: string }[];
@@ -279,7 +280,7 @@ declare global {
         ball: { state: string; holder: string | null; x: number; y: number; z: number; vx: number; vy: number; vz: number };
         controlled: string;
         play: { phase: string };
-        throwArm: { phase: string; lock: { x: number; y: number } | null };
+        throwArm: { phase: string; peak: number };
         aimHint: { x: number; y: number; id: string } | null;
         cm?: { phase: string; nextT: number };
       };

@@ -25,6 +25,7 @@ const RT = pad('rt', 'RT');
 const LS = pad('stick', 'LS');
 const RS = pad('stick', 'RS');
 const L3 = pad('l3', 'L3');
+const R3 = pad('r3', 'R3');
 const BACK = pad('back', 'Back');
 const START = pad('start', 'Start');
 
@@ -57,10 +58,10 @@ const BODY = [
     row(`${key('T')}`, 'Slow motion. Cycles 0.5×, 0.25×, and full speed.'),
   ].join('')),
   section('qb', 'Quarterback', [
-    row(`${RS} ${key('Mouse')} ${key('K')}`, 'Aim. K switches Absolute+ (angle and distance) and Direction charge (the stick picks the line, RT slides the distance). B cancels a charge. The arc is up before the throw.'),
-    row(`${RT}`, 'Charge. Pull past the engage mark and the distance grows. Squeeze RT all the way for a bullet at that spot. Let go, and you have a short window to pull it again for a lob to the locked spot. Miss the window and it is a pump fake. A light brush does nothing. B cancels.'),
-    row(`${key('Mouse')} ${key('F')}`, 'Hold the left button to charge. F while that hold is down throws the bullet. Right-click, or click again, during the lob window for the lob.'),
-    row(`${LB} ${RB} ×2`, `Pitch left or right. Flick ${RS} to aim it.`),
+    row(`${R3} ${key('L')}`, 'Flip the right stick. THROW aims and throws. CARRY jukes, spins, sidesteps, and trucks. The QB starts in THROW. The chip by the player shows which one.'),
+    row(`${RS} ${key('Mouse')} ${key('K')}`, 'Aim while you hold the stick. K switches Absolute+ (angle and distance) and Direction charge (the stick picks the line, RT slides the distance). Letting the stick go back to center cancels the wind-up, and nothing is thrown.'),
+    row(`${RT}`, 'With the stick held, squeeze and release. A light squeeze is a touch or lob. A full squeeze is a bullet. A quick brush does nothing. With the stick centered, a squeeze opens a short pitch window. Flick the stick to choose the direction. A gentle flick is a little short, a fast flick a little long. Miss the window and nothing happens.'),
+    row(`${key('Mouse')} ${key('F')}`, 'Hold the left button and release for a touch. Hold F during that press for a bullet. F alone, with the arrows centered, opens the pitch window.'),
   ].join('')),
   section('receiver', 'Receiver', [
     row(`${Y} ${key('E')}`, 'Timed catch. Before the throw, the same button calls for the ball.'),
@@ -73,7 +74,7 @@ const BODY = [
   section('carrier', 'Ball carrier', [
     row(`${RS} ${key('Arrows')}`, 'Flick with your run: sideways sidesteps, up trucks, down jukes, diagonals spin.'),
     row(`${A} ${X}`, 'Hurdle, or dive forward.'),
-    row(`${LB} ${RB}`, 'Tap to switch hands. Hold to stiff-arm. Double-tap to pitch.'),
+    row(`${LB} ${RB}`, 'Tap to switch hands. Hold to stiff-arm. Double-tap to pitch. The quarterback pitches with RT and a flick instead.'),
   ].join('')),
   section('defender', 'Defender', [
     row(`${LT} ${key('Q')}`, 'Break down and square up. A lunge from here is shorter and wraps more often.'),

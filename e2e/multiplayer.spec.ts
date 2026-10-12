@@ -199,7 +199,6 @@ test('throw around keeps names and rings through passes and mode changes', async
       S.catchWindowMs = 4000;
       S.catchReach = 6;
       S.aiTimingErrorMs = 0;
-      S.pumpBite = 0;
       S.throwVarianceDeg = 0;
     });
     await host.page.click('#net-start');

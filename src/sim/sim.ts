@@ -10,7 +10,7 @@ import { approachAngle, clamp, easeThresholds, gauss as gaussOf, lerp, lowAngle,
 import { defaultRng, type Rng } from './rng';
 import { stepAimHint } from './aimHint';
 import { freshThrowArm, stepThrowArm, throwTune } from './throwArm';
-import { blankInput, type AiBag, type ArcPoint, type Ball, type Move, type Player, type SimInput, type SimState, type ThrowSolution, type Vec2 } from './types';
+import { blankInput, type AiBag, type ArcPoint, type Ball, type Flick, type Move, type Player, type SimInput, type SimState, type ThrowSolution, type Vec2 } from './types';
 
 export { blankInput } from './types';
 
@@ -95,6 +95,7 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
       planted: null, stretch: 0, stretchReach: 0, leanDir: Math.PI / 2,
       hand: 'R', handSwitchT: 0, move: null, moveCD: 0, vulnT: 0, reaccelT: 0, spinVis: 0,
       stiffArm: null, stiffHit: false, stunT: 0, tackle: null, tackleCD: 0, punchCD: 0, dove: false,
+      stickMode: 'throw', pitchUntil: 0, pitchFlick: null,
     };
   }
   function say(text: string, color = '#fff') { st.feedback = { text, color, t: st.t }; }
@@ -164,6 +165,7 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     if (st.play.phase !== 'pre') return;
     st.play.phase = 'live'; st.play.snapT = st.t; st.ai.wr.wp = routeWaypoints(st.route); st.ai.wr.wpi = 0;
     if (st.ai.qb) { st.ai.qb.holdMin = undefined; st.ai.qb.readyAt = undefined; st.ai.qb.clockRoute = undefined; }
+    if (st.players.qb) st.players.qb.stickMode = 'throw';
     say('HIKE', '#9fe39f');
   }
   function endPlay(result: string) { if (st.play.phase !== 'over') { st.play.phase = 'over'; st.play.endT = st.t; st.play.result = result; } st.stats.last = result; }
@@ -551,7 +553,13 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
           inp.mx = dx / d * mag; inp.my = dy / d * mag; inp.sprint = want > S.fullSpeed && aiPump(ai);
         }
         if (d < 1.5 && left > 0.25) inp.lt = true;
-        if (!ai.dove && left < 0.3 && d > S.catchReach + 0.4 && d < S.catchReach + S.diveReachBonus + S.diveDistance * 0.7) { inp.x = true; ai.dove = true; inp.mx = dx / d; inp.my = dy / d; }
+        const aheadX = p.x + p.vx * left, aheadY = p.y + p.vy * left;
+        const miss = Math.hypot(cp.x - aheadX, cp.y - aheadY);
+        const reach = Math.max(S.catchReach, S.oneHandReach);
+        const diveMax = reach + S.diveReachBonus + S.diveDistance;
+        if (!ai.dove && left < 0.35 && d > 0.05 && miss > reach + S.catchDiveGap && miss < diveMax) {
+          inp.x = true; ai.dove = true; inp.mx = dx / d; inp.my = dy / d;
+        }
       }
       if (!ai.pressed) {
         let te: number | null = null; const lt = inp.lt || p.squared;
@@ -674,6 +682,30 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     if (slotInputs) return !!slotInputs[id];
     return st.controlled === id;
   }
+  function usesFlickPitch(p: Player) {
+    if (st.mode === 'run' || st.carry) return false;
+    if (st.mode === 'free') return st.ball.holder === p.id && st.ball.state === 'held';
+    return p.role === 'QB' && st.ball.holder === p.id && st.ball.state === 'held';
+  }
+  function applyStickMode(p: Player, inp: SimInput) {
+    if (!inp.modeToggle || st.ball.holder !== p.id) return;
+    p.stickMode = p.stickMode === 'carry' ? 'throw' : 'carry';
+    if (p.stickMode === 'carry' && st.throwArm.phase === 'charge') {
+      st.throwArm = { ...freshThrowArm(), prev: inp.trigger || 0, last: 'cancel' };
+    }
+    floatText(p.stickMode === 'throw' ? 'THROW' : 'CARRY', p.x, p.y + 1.6, p.stickMode === 'throw' ? '#9fd4ff' : '#ffe082');
+  }
+  function openPitchWindow(p: Player, inp: SimInput) {
+    if (!usesFlickPitch(p) || st.play.phase === 'over') return;
+    if (p.pitchUntil > st.t) return;
+    const tune = throwTune(S);
+    const tr = inp.trigger || 0;
+    if (!inp.stickHeld && st.throwArm.prev < tune.engage && tr >= tune.engage) {
+      p.pitchUntil = st.t + Math.max(0.05, S.pitchWindow);
+      p.pitchFlick = null;
+      floatText('PITCH', p.x, p.y + 1.4, '#ffe082');
+    }
+  }
   function biteSteer(p: Player): SimInput | null {
     const ai = st.ai[p.id];
     if (!ai?.bite || st.t > (ai.biteUntil || 0)) return null;
@@ -682,43 +714,25 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     if (d > 0.35) { inp.mx = dx / d; inp.my = dy / d; inp.sprint = true; }
     return inp;
   }
-  function pumpBite(thrower: Player, lock: Vec2 | null) {
-    if (!lock || S.pumpBite <= 0) return;
-    for (const p of Object.values(st.players)) {
-      if (p.id === thrower.id) continue;
-      if (p.role !== 'DF' && st.mode !== 'free') continue;
-      if (humanControls(p.id)) continue;
-      if (rng.random() >= S.pumpBite) continue;
-      const ai = (st.ai[p.id] = st.ai[p.id] || {});
-      ai.bite = { x: lock.x, y: lock.y };
-      ai.biteUntil = st.t + 0.45;
-    }
-  }
-  function posePump(thrower: Player) {
-    if (st.t < st.throwArm.pumpUntil) thrower.forcePose = 'throwWindup';
-    else if (thrower.forcePose === 'throwWindup' && st.throwArm.pumpUntil > 0) {
-      delete thrower.forcePose;
-      st.throwArm.pumpUntil = 0;
-    }
-  }
-  /** Bullet, lob window, and pump fake. Runs on the host sim so every peer sees one result. */
+  /** Release throws. A neutral stick cancels. Runs on the host sim so every peer sees one result. */
   function runHumanThrow(inp: SimInput, thrower: Player) {
     const holding = st.ball.state === 'held' && st.ball.holder === thrower.id && st.play.phase !== 'over';
     if (!holding) {
-      posePump(thrower);
       if (st.throwArm.phase !== 'idle') st.throwArm = freshThrowArm();
       return;
     }
-    const aim = inp.aim || st.aimQB || { x: thrower.x, y: thrower.y + 12 };
-    const out = stepThrowArm(st.throwArm, inp.trigger || 0, aim, !!inp.b, st.t, throwTune(S));
-    st.throwArm = out.arm;
-    if (out.action === 'bullet' && out.target) doThrow(out.target, 1, true, 1, 'bullet');
-    else if (out.action === 'lob' && out.target) doThrow(out.target, 0, true, 1, 'lob');
-    else if (out.action === 'pump') {
-      floatText('PUMP', thrower.x, thrower.y + 1.2, '#ffe0b2');
-      pumpBite(thrower, out.target);
+    if (thrower.stickMode === 'carry' || thrower.pitchUntil > st.t) {
+      st.throwArm = { ...freshThrowArm(), prev: inp.trigger || 0 };
+      return;
     }
-    posePump(thrower);
+    if (!inp.stickHeld && st.throwArm.phase !== 'charge') {
+      st.throwArm = { ...st.throwArm, prev: inp.trigger || 0 };
+      return;
+    }
+    const aim = inp.aim || st.aimQB || { x: thrower.x, y: thrower.y + 12 };
+    const out = stepThrowArm(st.throwArm, inp.trigger || 0, aim, !!inp.stickHeld, st.t, throwTune(S));
+    st.throwArm = out.arm;
+    if (out.action === 'throw' && out.target) doThrow(out.target, out.power, true);
   }
 
   function step(dt: number, human?: SimInput | null) {
@@ -751,7 +765,8 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     if (inputs.qb.aim) st.aimQB = inputs.qb.aim;
 
     const qb = st.players.qb, w0 = st.players.wr, hb = st.players.hb, df = st.players.df;
-    flickCheck(qb, inputs.qb, false); shoulderButtons(qb, inputs.qb, { hands: false, stiff: false }); pitchUpdate(qb, false);
+    if (qb && qbIsHuman()) { applyStickMode(qb, inputs.qb); openPitchWindow(qb, inputs.qb); }
+    flickCheck(qb, inputs.qb, qb.stickMode === 'carry'); shoulderButtons(qb, inputs.qb, { hands: false, stiff: false }); pitchUpdate(qb, qb.stickMode === 'carry');
     plantStretch(w0, inputs.wr);
     updateMovement(qb, { ...inputs.qb, rb: false }, dt);
     updateMovement(w0, { ...inputs.wr, rb: false }, dt);
@@ -797,8 +812,7 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     if (thrower && S.showAimFuzz) {
       const arm = st.throwArm;
       const look = st.ai[thrower.id]?.look;
-      if (arm.phase === 'window' && arm.lock) point = arm.lock;
-      else if (arm.phase === 'charge') point = liveAim || st.aimQB || null;
+      if (arm.phase === 'charge') point = liveAim || st.aimQB || null;
       else if (st.mode === 'catch' && st.cm?.phase === 'windup' && st.players.wr) {
         const w = st.players.wr;
         point = { x: clamp(w.x + w.vx * 0.4, 1, FIELD_W - 1), y: clamp(w.y + w.vy * 0.4, 1, FIELD_L - 1) };
@@ -1180,8 +1194,9 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     if (!p.flickArmed || !rs || m < S.flickThreshold) return;
     p.flickArmed = false;
     const fl = { x: rs.x, y: rs.y, peak: m, t: st.t }; p.curFlick = fl;
+    if (p.pitchUntil > st.t) { p.pitchFlick = fl; return; }
     if (p.pitchPending) { if (!p.pitchPending.flick) p.pitchPending.flick = fl; return; }
-    if (canPitch(p) && st.t - Math.max(p.lbTTap, p.rbTTap) <= S.doubleTapWindow) { p.bufferedFlick = fl; return; }
+    if (canPitch(p) && !usesFlickPitch(p) && st.t - Math.max(p.lbTTap, p.rbTTap) <= S.doubleTapWindow) { p.bufferedFlick = fl; return; }
     if (allowMoves) doFlickMove(p, rs);
   }
   function doFlickMove(p: Player, rs: Vec2) {
@@ -1201,7 +1216,7 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
       if (spec.held) {
         if (p[spec.down] < 0) {
           p[spec.down] = st.t;
-          if (st.t - p[spec.tap] <= S.doubleTapWindow && canPitch(p)) {
+          if (st.t - p[spec.tap] <= S.doubleTapWindow && canPitch(p) && !usesFlickPitch(p)) {
             p[spec.dbl] = true; p[spec.tap] = -9;
             if (p.handTapUndo) { p.hand = p.handTapUndo; p.handSwitchT = 0; p.handTapUndo = null; }
             beginPitch(p, spec.side);
@@ -1229,6 +1244,14 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     p.pitchPending = { side, t: st.t, flick: bf };
   }
   function pitchUpdate(p: Player, allowMoves: boolean) {
+    if (p.pitchUntil > 0) {
+      if (p.pitchFlick) {
+        const fl = p.pitchFlick;
+        p.pitchFlick = null;
+        p.pitchUntil = 0;
+        executeFlickPitch(p, fl);
+      } else if (st.t >= p.pitchUntil) p.pitchUntil = 0;
+    }
     const pp = p.pitchPending;
     if (pp) {
       const fl = pp.flick;
@@ -1238,6 +1261,37 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
       const f = p.bufferedFlick; p.bufferedFlick = null; if (allowMoves) doFlickMove(p, f);
     }
     if (p.handTapUndo && st.t - Math.max(p.lbTTap, p.rbTTap) > S.doubleTapWindow) p.handTapUndo = null;
+  }
+  function pitchFlight(z0: number, vz: number) {
+    const a = 0.5 * GRAV;
+    const disc = vz * vz + 4 * a * Math.max(0, z0);
+    return Math.max(0.05, (vz + Math.sqrt(Math.max(0, disc))) / (2 * a));
+  }
+  function executeFlickPitch(p: Player, flick: Flick) {
+    const b = st.ball;
+    if (!canPitch(p)) return;
+    const ang = Math.atan2(flick.y, flick.x);
+    const speed01 = clamp((flick.peak - S.flickThreshold) / Math.max(0.01, 1 - S.flickThreshold), 0, 1);
+    const scale = lerp(S.pitchFlickNear, S.pitchFlickFar, speed01);
+    const dist = Math.max(0.5, S.pitchDistance * scale);
+    const z0 = Math.max(1, b.z);
+    const speed = dist / pitchFlight(z0, S.pitchLoft);
+    const vx = Math.cos(ang) * speed + p.vx * S.pitchInherit;
+    const vy = Math.sin(ang) * speed + p.vy * S.pitchInherit;
+    if (st.mode === 'throw') snap();
+    Object.assign(b, {
+      state: 'air', holder: null, z: z0, vx, vy, vz: S.pitchLoft, throwT: st.t, resolved: false, gave: false, aimed: null, power: 0,
+      pitch: { from: p.id, t: st.t, x0: b.x, y0: b.y, rolled: {}, looseT: 0 },
+    });
+    b.arc = predictArc(b.x, b.y, b.z, b.vx, b.vy, b.vz, st.t); b.landing = b.arc[b.arc.length - 1];
+    p.handSwitchT = 0; p.stiffArm = null;
+    floatText('PITCH', p.x, p.y, '#ffe082');
+    const deg = (r: number) => +(r * 180 / Math.PI).toFixed(1);
+    const ref = p.role === 'QB' ? Math.PI / 2 : runDir(p);
+    st.lastPitch = {
+      from: p.id, side: ang > ref ? 'L' : 'R', flicked: true, flickPeak: +flick.peak.toFixed(2), relAngleDeg: deg(wrapAngle(ang - ref)), pitchSpeed: +speed.toFixed(2),
+      groundDirDeg: deg(Math.atan2(vy, vx)), refDeg: deg(ref), t: st.t,
+    };
   }
   function executePitch(p: Player) {
     const pp = p.pitchPending, b = st.ball; p.pitchPending = null;
@@ -1929,9 +1983,11 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
       const inp = inputs[id];
       const holding = !!holder && holder.id === id && st.ball.state === 'held';
       if (holding) {
-        flickCheck(p, inp, true);
+        if (humanControls(p.id)) { applyStickMode(p, inp); openPitchWindow(p, inp); }
+        const carryStick = !humanControls(p.id) || p.stickMode === 'carry';
+        flickCheck(p, inp, carryStick);
         shoulderButtons(p, inp);
-        pitchUpdate(p, true);
+        pitchUpdate(p, carryStick);
         if (p.handSwitchT > 0) p.handSwitchT -= dt;
         updateMovement(p, { ...inp, a: false, x: false, rb: false }, dt);
         applyMove(p, dt);

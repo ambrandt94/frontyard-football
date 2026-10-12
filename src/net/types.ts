@@ -29,6 +29,8 @@ export const BTN = {
   start: 128,
   lb: 256,
   rbHeld: 512,
+  stickHeld: 1024,
+  modeToggle: 2048,
 } as const;
 
 export interface SnapPlayer {
@@ -65,6 +67,10 @@ export interface SnapPlayer {
   lean: number;
   /** 0 none, 1 toe-tap plant, 2 falling out of it. */
   plant: 0 | 1 | 2;
+  /** 0 throw, 1 carry. What the right stick does for the ball holder. */
+  stick: 0 | 1;
+  /** Seconds left in the pitch window. 0 when it is shut. */
+  pitch: number;
 }
 
 export interface Snapshot {

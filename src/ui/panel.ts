@@ -343,11 +343,15 @@ export function createPanel(opts: {
   ]);
   [fr, ftk, fai].forEach((f) => f.close());
 
-  const fpt = gui.addFolder('Pitch (double-tap LB/RB) & backs');
+  const fpt = gui.addFolder('Pitch & backs');
   fpt.add(S, 'trailingBack').name('1v1: trailing back (needs reset)');
   fpt.add(S, 'throwModeRB').name('Throw: RB beside QB (needs reset)');
   addSliders(fpt, [
     ['doubleTapWindow', 0.1, 0.6, 0.01, 'double-tap window (s)'],
+    ['pitchWindow', 0.1, 1, 0.01, 'QB pitch window (s)'],
+    ['pitchDistance', 3, 18, 0.1, 'pitch distance (yd)'],
+    ['pitchFlickNear', 0.5, 1, 0.01, 'gentle flick distance ×'],
+    ['pitchFlickFar', 1, 1.6, 0.01, 'fast flick distance ×'],
     ['pitchFlickWindow', 0, 0.5, 0.01, 'flick-after window (s)'],
     ['pitchMinSpeed', 2, 15, 0.1, 'pitch speed soft (yd/s)'],
     ['pitchMaxSpeed', 5, 25, 0.1, 'pitch speed firm (yd/s)'],
@@ -427,10 +431,6 @@ export function createPanel(opts: {
   ft.add(S, 'bulletAngleDeg', 3, 25, 0.5).name('bullet angle°');
   ft.add(S, 'lobAngleDeg', 18, 55, 0.5).name('lob angle°');
   ft.add(S, 'throwVarianceDeg', 0, 8, 0.1).name('throw angle variation°');
-  ft.add(S, 'bulletSqueeze', 0.5, 1, 0.01).name('bullet squeeze');
-  ft.add(S, 'lobPress', 0.5, 1, 0.01).name('lob press');
-  ft.add(S, 'lobWindow', 0.05, 1.5, 0.01).name('lob window (s)');
-  ft.add(S, 'pumpBite', 0, 1, 0.01).name('pump fake bite chance');
   ft.add(S, 'showAimFuzz').name('show aim fuzz');
   ft.add(S, 'aimFuzzRadius', 1, 8, 0.25).name('aim fuzz radius (yd)');
 
@@ -448,6 +448,7 @@ export function createPanel(opts: {
   fc.add(S, 'diveDuration', 0.1, 0.8, 0.01).name('dive duration (s)');
   fc.add(S, 'diveRecovery', 0.1, 2.5, 0.05).name('dive recovery (s)');
   fc.add(S, 'diveReachBonus', 0, 2, 0.05).name('dive extra reach (yd)');
+  fc.add(S, 'catchDiveGap', 0, 4, 0.05).name('dive only past reach (yd)');
   fc.add(S, 'plantLockout', 0, 0.4, 0.01).name('RB plant lockout (s)');
   fc.add(S, 'plantFallTime', 0.2, 2, 0.01).name('RB hold → toe-tap fall (s)');
   fc.add(S, 'stretchMaxReach', 0, 3, 0.05).name('stretch max extra reach (yd)');

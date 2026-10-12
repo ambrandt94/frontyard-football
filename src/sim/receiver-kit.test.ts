@@ -128,7 +128,7 @@ describe('receiver kit in catch and throw around', () => {
     const s4 = sim();
     s4.setMode('free');
     const holder = s4.state.players.p0;
-    s4.step(STEP, press({ rt: true, trigger: 0.6, aim: { x: holder.x, y: holder.y + 12 } }));
+    s4.step(STEP, press({ rt: true, trigger: 0.6, stickHeld: true, aim: { x: holder.x, y: holder.y + 12 } }));
     expect(s4.state.throwArm.phase).toBe('charge');
     expect(holder.diveT).toBeLessThan(0);
   });

@@ -66,7 +66,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1a0e; fon
 .pad.b { background: #c4314b; }
 .pad.x { background: #0078d4; }
 .pad.y { background: #e6b325; color: #1c1604; }
-.pad.lb, .pad.rb, .pad.lt, .pad.rt, .pad.stick, .pad.l3, .pad.back, .pad.start { background: #3d4a52; border-radius: 4px; }
+.pad.lb, .pad.rb, .pad.lt, .pad.rt, .pad.stick, .pad.l3, .pad.r3, .pad.back, .pad.start { background: #3d4a52; border-radius: 4px; }
 #help kbd { display: inline-block; min-width: .7em; padding: 0 .28em; margin: 0 1px; border: 1px solid rgba(255, 255, 255, .28); border-bottom-width: 2px; border-radius: 4px; background: #1a2820; color: #f4f7f4; font-family: inherit; font-size: 10px; line-height: 1.45; text-align: center; }
 .lil-gui {
   --background-color: rgba(8, 16, 12, .94);
@@ -86,6 +86,10 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1a0e; fon
 .lil-gui .host-lock-note { display: none; padding: 6px 8px; background: #3a2e14; color: #ffd54a; font-size: 11px; }
 .lil-gui.is-client .host-lock-note { display: block; }
 #floaters .nameplate { font-size: 13px; font-weight: 700; letter-spacing: 0; }
+#floaters .modechip { font-size: 11px; font-weight: 800; letter-spacing: .08em; background: rgba(8, 16, 12, .72); border: 1px solid rgba(255, 255, 255, .35); border-radius: 999px; padding: 2px 8px; }
+#floaters .modechip.throw { color: #9fd4ff; }
+#floaters .modechip.carry { color: #ffe082; }
+#floaters .modechip.pitch { color: #1c1404; background: rgba(255, 193, 7, .92); border-color: rgba(255, 224, 130, .9); }
 #net-open, #net-stats-btn, #roster-toggle { position: fixed; z-index: 36; background: #1d3b24; color: #eef; border: 1px solid rgba(255,255,255,.2); border-radius: 6px; padding: 6px 10px; font: inherit; font-size: 13px; cursor: pointer; }
 #net-open { top: 78px; left: 50%; transform: translateX(-50%); }
 #net-stats-btn { top: 78px; left: calc(50% + 52px); }
