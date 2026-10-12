@@ -8,7 +8,8 @@ import { fitAngledCamera, rigAzimuth, type FramePoint } from './render/camera';
 import { MODE_LABEL, MP_MODE_IDS, nextMode, type ModeId } from './modes';
 import { clamp, rad } from './sim/math';
 import { createSim } from './sim/sim';
-import type { SimInput } from './sim/types';
+import { freshThrowArm, stepThrowArm, throwTune } from './sim/throwArm';
+import type { SimInput, ThrowPhase, Vec2 } from './sim/types';
 import { AIM_MODE_LABEL, aimModeOf, createAimState, nextAimMode, resampleArc, stepAim } from './input/aim';
 import { createInput } from './input/input';
 import type { PolledInput } from './input/input';
@@ -118,6 +119,11 @@ if (camBtn) camBtn.textContent = camStyleLabel(S.camStyle);
 
 const input = createInput(S, viewEl);
 const aimState = createAimState();
+let armPhase: ThrowPhase = 'idle';
+let armLock: Vec2 | null = null;
+let clientArm = freshThrowArm();
+let clientT = 0;
+let clientAcc = 0;
 let shownAim = aimModeOf(S.aimMode);
 let aimHint = '';
 let aimHintUntil = 0;
@@ -233,6 +239,7 @@ function frame(now: number) {
       charging: inp.charge !== null,
       pressure: inp.charge,
       cancel: !!inp.b,
+      hold: armPhase === 'window' || (armPhase === 'charge' && (inp.trigger || 0) < S.rtRelease),
     }, dt, S, now / 1000);
     if (aimed.suppressThrow) {
       inp.throwPower = null;
@@ -325,11 +332,49 @@ function frame(now: number) {
     if (Math.abs(fit.dist - cam.dist) > Math.max(0.8, cam.dist * 0.012)) cam.dist += (fit.dist - cam.dist) * kDist;
   }
 
+  const onlinePlay = session.phase === 'play' && session.role === 'client';
+  if (onlinePlay) {
+    clientAcc += dt * timeScaleOf(S.timeScale);
+    const tune = throwTune(S);
+    let guard = 0;
+    while (clientAcc >= STEP && guard++ < 8) {
+      const out = stepThrowArm(clientArm, inp.trigger || 0, inp.aim, !!inp.b, clientT + STEP, tune);
+      clientArm = out.arm;
+      clientT += STEP;
+      clientAcc -= STEP;
+      if (out.action === 'pump' && thrower) {
+        st.floaters.push({ text: 'PUMP', x: thrower.x, y: thrower.y + 1.2, t: clientT, color: '#ffe0b2' });
+        thrower.forcePose = 'throwWindup';
+      }
+    }
+    if (thrower && clientArm.pumpUntil > 0 && clientT >= clientArm.pumpUntil && thrower.forcePose === 'throwWindup') delete thrower.forcePose;
+    else if (thrower && clientT < clientArm.pumpUntil) thrower.forcePose = 'throwWindup';
+    armPhase = clientArm.phase;
+    armLock = clientArm.lock;
+  } else {
+    armPhase = st.throwArm.phase;
+    armLock = st.throwArm.lock;
+    clientArm = freshThrowArm();
+    clientT = st.t;
+    clientAcc = 0;
+  }
+  input.setArmPhase(armPhase);
+  if (thrower && st.ball.holder === thrower.id && (armLock || inp.aim)) {
+    if (armPhase === 'window' && armLock) {
+      previewLoft = 0;
+      previewPoint = armLock;
+    } else if (armPhase === 'charge' && inp.aim) {
+      previewLoft = 1;
+      previewPoint = inp.aim;
+    }
+  }
+
   const qb = st.players.qb;
   let preview = null;
   let previewRing: { x: number; y: number; r: number } | null = null;
   if (previewPoint) {
-    const arc = sim.previewThrow(previewLoft, previewPoint).arc;
+    const style = armPhase === 'window' ? 'lob' as const : armPhase === 'charge' ? 'bullet' as const : undefined;
+    const arc = sim.previewThrow(previewLoft, previewPoint, style).arc;
     const end = arc[arc.length - 1];
     preview = resampleArc(arc, 32);
     if (end) previewRing = { x: end.x, y: end.y, r: S.catchReach };

@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 const APP = 'http://127.0.0.1:5173/frontyard-football/';
 
-test('aim modes switch live and the arc morphs with RT', async ({ page }) => {
+test('aim modes switch live and the arc changes from bullet to lob', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (err) => errors.push('pageerror: ' + err.message));
   page.on('console', (msg) => { if (msg.type() === 'error') errors.push(msg.text()); });
@@ -35,30 +35,32 @@ test('aim modes switch live and the arc morphs with RT', async ({ page }) => {
     return sb.renderer.fieldToScreen(qb.x, qb.y + 40, 0);
   });
   await page.mouse.move(spot.x, spot.y);
-  await page.waitForTimeout(200);
-  await page.keyboard.down('f');
-  const peaks: number[] = [];
-  for (let i = 0; i < 8; i++) {
-    await page.waitForTimeout(70);
-    const peak = await page.evaluate(() => {
-      const view = (window as unknown as { __sandbox: { view: { preview: { z?: number }[] | null; previewLoft: number } | null } }).__sandbox.view;
-      const preview = view?.preview;
-      if (!preview?.length) return -1;
-      let z = 0;
-      for (const p of preview) z = Math.max(z, p.z || 0);
-      return z;
-    });
-    peaks.push(peak);
-  }
-  await page.keyboard.up('f');
-  console.log('arc peaks ' + peaks.map((z) => z.toFixed(2)).join(', '));
-  expect(peaks.every((z) => z > 0)).toBe(true);
-  let maxStep = 0;
-  for (let i = 1; i < peaks.length; i++) maxStep = Math.max(maxStep, Math.abs(peaks[i] - peaks[i - 1]));
-  const span = Math.max(...peaks) - Math.min(...peaks);
-  console.log(`arc morph step=${maxStep.toFixed(2)} yd span=${span.toFixed(2)} yd`);
-  expect(maxStep).toBeLessThan(6);
-  expect(span).toBeGreaterThan(1);
+  await page.keyboard.press('Space');
+  await page.waitForFunction(() => (window as unknown as { __sandbox: { state: { play: { phase: string } } } }).__sandbox.state.play.phase === 'live');
+  await page.waitForTimeout(100);
+  await page.mouse.down();
+  await page.waitForTimeout(180);
+  const bullet = await page.evaluate(() => {
+    const view = (window as unknown as { __sandbox: { view: { preview: { z?: number }[] | null; previewLoft: number } | null } }).__sandbox.view;
+    const preview = view?.preview;
+    let z = 0;
+    for (const p of preview || []) z = Math.max(z, p.z || 0);
+    return { z, loft: view?.previewLoft ?? -1 };
+  });
+  await page.mouse.up();
+  await page.waitForTimeout(80);
+  const lob = await page.evaluate(() => {
+    const view = (window as unknown as { __sandbox: { view: { preview: { z?: number }[] | null; previewLoft: number } | null } }).__sandbox.view;
+    const preview = view?.preview;
+    let z = 0;
+    for (const p of preview || []) z = Math.max(z, p.z || 0);
+    return { z, loft: view?.previewLoft ?? -1 };
+  });
+  console.log(`bullet loft=${bullet.loft} z=${bullet.z.toFixed(2)} lob loft=${lob.loft} z=${lob.z.toFixed(2)}`);
+  expect(bullet.loft).toBe(1);
+  expect(lob.loft).toBe(0);
+  expect(bullet.z).toBeGreaterThan(0);
+  expect(lob.z - bullet.z).toBeGreaterThan(1);
 
   await page.keyboard.press('k');
   await expect(page.locator('#aim-mode')).toContainText('Direction charge');

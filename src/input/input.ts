@@ -1,7 +1,8 @@
 import type { Settings } from '../config/defaults';
 import { ROUTES } from '../config/constants';
 import { radialDeadzone } from '../sim/math';
-import { blankInput, type SimInput } from '../sim/types';
+import { throwTune } from '../sim/throwArm';
+import { blankInput, type SimInput, type ThrowPhase } from '../sim/types';
 import { freshTrigger, stepTrigger } from './trigger';
 
 export interface InputMeta {
@@ -35,6 +36,8 @@ export interface InputController {
   readonly aimMode: string;
   mouse: { x: number; y: number; moved: boolean; down: boolean; downT: number; released: number | null };
   poll(): { inp: PolledInput; meta: InputMeta };
+  /** Last throw-arm phase, so a second click during the lob window sends a lob press. */
+  setArmPhase(phase: ThrowPhase): void;
 }
 
 export function createInput(S: Settings, view: HTMLElement): InputController {
@@ -44,6 +47,9 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
   let prevButtons: boolean[] = [];
   let prevRtv = 0;
   let rtLatch = freshTrigger();
+  let armPhase: ThrowPhase = 'idle';
+  let leftEdge = false;
+  let rightEdge = false;
   let cAt = 0;
   let cJog = false;
   let aimMode: 'stick' | 'mouse' = 'stick';
@@ -68,13 +74,13 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
   addEventListener('blur', () => keys.clear());
   view.addEventListener('mousemove', (e) => { mouse.x = e.clientX; mouse.y = e.clientY; mouse.moved = true; aimMode = 'mouse'; });
   view.addEventListener('mousedown', (e) => {
-    if (e.button === 0) { mouse.down = true; mouse.downT = performance.now(); mouse.x = e.clientX; mouse.y = e.clientY; aimMode = 'mouse'; lastDevice = 'keyboard'; }
+    if (e.button === 2) { rightEdge = true; lastDevice = 'keyboard'; }
+    if (e.button === 0) { leftEdge = true; mouse.down = true; mouse.downT = performance.now(); mouse.x = e.clientX; mouse.y = e.clientY; aimMode = 'mouse'; lastDevice = 'keyboard'; }
   });
   addEventListener('mouseup', (e) => {
     if (e.button === 0 && mouse.down) { mouse.down = false; mouse.released = (performance.now() - mouse.downT) / 1000; }
   });
   view.addEventListener('contextmenu', (e) => e.preventDefault());
-  let fDownT = 0;
   let arrowT = 0;
   let backAt = 0;
   let backSent = false;
@@ -91,6 +97,7 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
     get device() { return lastDevice; },
     get aimMode() { return aimMode; },
     mouse,
+    setArmPhase(phase: ThrowPhase) { armPhase = phase; },
     poll() {
       const inp = blankInput() as PolledInput;
       const meta: InputMeta = { switch: false, reset: false, start: false, routeDelta: 0, route: null, toggleRenderer: false, toggleHelp: false, toggleGui: false, cycleTime: false, mode: false, posePreview: false, cycleAim: false, zoom: 0, cycleCam: false, zoomStop: false };
@@ -116,15 +123,10 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
         inp.x = E(2);
         inp.b = E(1);
         const rt = V(7);
-        const pulled = stepTrigger(rtLatch, rt, performance.now(), prevRtv, {
-          engage: S.rtEngage,
-          release: S.rtRelease,
-          minHoldMs: S.rtMinHoldMs,
-        });
-        rtLatch = pulled.latch;
-        inp.rt = pulled.catchEdge;
-        if (pulled.charge !== null) inp.charge = pulled.charge;
-        if (pulled.throwPower !== null) inp.throwPower = pulled.throwPower;
+        const engage = Math.min(0.95, Math.max(0.02, S.rtEngage));
+        if (rt >= engage && prevRtv < engage) inp.rt = true;
+        prevRtv = rt;
+        inp.trigger = rt;
         const nowMs = performance.now();
         const back = B(8);
         const startBtn = B(9);
@@ -184,11 +186,28 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
       inp.x = inp.x || e('KeyX');
       inp.b = inp.b || e('KeyB');
       const now = performance.now();
-      if (e('KeyF')) fDownT = now;
-      if (mouse.down) inp.charge = clampCharge((now - mouse.downT) / 1000 / S.kbChargeTime);
-      else if (keys.has('KeyF') && fDownT) inp.charge = clampCharge((now - fDownT) / 1000 / S.kbChargeTime);
-      if (mouse.released !== null) { inp.throwPower = clampCharge(mouse.released / S.kbChargeTime); mouse.released = null; }
-      if (e('KeyF-up') && fDownT) { inp.throwPower = clampCharge((now - fDownT) / 1000 / S.kbChargeTime); fDownT = 0; }
+      const tune = throwTune(S);
+      const cap = Math.min(tune.bulletSqueeze, tune.lobPress) - 0.04;
+      const mid = cap <= tune.engage ? tune.engage + 0.01 : tune.engage + (cap - tune.engage) * 0.55;
+      const lobSpike = Math.min(1, tune.lobPress + 0.02);
+      let mouseT = 0;
+      if (mouse.down) {
+        if (leftEdge && armPhase === 'window' && !keys.has('KeyF')) mouseT = lobSpike;
+        else mouseT = keys.has('KeyF') ? 1 : mid;
+      }
+      if (rightEdge && armPhase === 'window') mouseT = Math.max(mouseT, lobSpike);
+      leftEdge = false;
+      rightEdge = false;
+      if (mouse.released !== null) mouse.released = null;
+      const trigger = Math.max(inp.trigger, mouseT);
+      const pulled = stepTrigger(rtLatch, trigger, now, prevRtv, {
+        engage: S.rtEngage,
+        release: S.rtRelease,
+        minHoldMs: S.rtMinHoldMs,
+      });
+      rtLatch = pulled.latch;
+      inp.trigger = trigger;
+      if (pulled.latch.charging) inp.charge = trigger;
       if (e('Tab')) meta.switch = true;
       if (e('KeyR')) meta.reset = true;
       if (e('Enter')) meta.start = true;
@@ -227,8 +246,4 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
       return { inp, meta };
     },
   };
-}
-
-function clampCharge(v: number): number {
-  return Math.max(0, Math.min(1, v));
 }

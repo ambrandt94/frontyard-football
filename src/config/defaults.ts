@@ -20,10 +20,24 @@ export interface Settings {
   deadzone: number;
   /** Gamepad RT must pass this before a throw charge or a one-hand catch counts. */
   rtEngage: number;
-  /** After RT engages, the throw releases only once it drops below this. */
+  /** After RT engages, dropping below this ends the charge and opens the lob window. */
   rtRelease: number;
-  /** A trigger brush shorter than this never becomes a throw, milliseconds. */
+  /** A trigger brush shorter than this never opens the lob window, milliseconds. */
   rtMinHoldMs: number;
+  /** While charging, RT at or above this throws a bullet immediately. */
+  bulletSqueeze: number;
+  /** During the lob window, crossing this throws the lob. */
+  lobPress: number;
+  /** Seconds after a release to press for a lob. After that, the throw is a pump fake. */
+  lobWindow: number;
+  /** Bullet launch angle, degrees. Speed is solved so the pass reaches the spot. */
+  bulletAngleDeg: number;
+  /** Lob launch angle, degrees. Speed is solved so the pass reaches the spot. */
+  lobAngleDeg: number;
+  /** Random angle added to a live bullet or lob, degrees. The preview uses zero. */
+  throwVarianceDeg: number;
+  /** Chance an AI defender steps toward a pump-fake target. */
+  pumpBite: number;
   /** Absolute+ or direction charge. Local to this player. */
   aimMode: 'absolutePlus' | 'directionCharge';
   /** Radial deadzone used only for aiming. Movement still uses `deadzone`. */
@@ -286,6 +300,13 @@ export const DEFAULTS: Settings = {
   rtEngage: 0.35,
   rtRelease: 0.12,
   rtMinHoldMs: 80,
+  bulletSqueeze: 0.95,
+  lobPress: 0.9,
+  lobWindow: 0.3,
+  bulletAngleDeg: 8,
+  lobAngleDeg: 35,
+  throwVarianceDeg: 1.5,
+  pumpBite: 0.45,
   aimMode: 'directionCharge',
   aimDeadzone: 0.12,
   aimMinDist: 3,

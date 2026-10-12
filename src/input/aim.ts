@@ -182,6 +182,8 @@ export interface AimSample {
   pressure: number | null;
   /** B, which cancels a direction charge. */
   cancel: boolean;
+  /** Lob window, or the release frame of a charge. Keep the locked spot. */
+  hold?: boolean;
 }
 
 export interface AimOutput {
@@ -222,7 +224,7 @@ export function stepAim(state: AimState, sample: AimSample, dt: number, settings
   const dead = Math.min(0.95, Math.max(0, settings.aimDeadzone));
   let suppressThrow = false;
 
-  if (sample.stick) {
+  if (sample.stick && !sample.hold) {
     const dz = radialDeadzone(sample.stick.x, sample.stick.y, dead);
     const mag = dz.m;
     const rate = frame > 1e-6 ? (mag - state.lastMag) / frame : 0;
@@ -267,7 +269,7 @@ export function stepAim(state: AimState, sample: AimSample, dt: number, settings
     }
   }
 
-  if (sample.mouse && !(mode === 'absolutePlus' && sample.stick && radialDeadzone(sample.stick.x, sample.stick.y, dead).m > 0)) {
+  if (!sample.hold && sample.mouse && !(mode === 'absolutePlus' && sample.stick && radialDeadzone(sample.stick.x, sample.stick.y, dead).m > 0)) {
     const dx = sample.mouse.x - sample.qb.x;
     const dy = sample.mouse.y - sample.qb.y;
     const d = Math.hypot(dx, dy);
@@ -285,13 +287,15 @@ export function stepAim(state: AimState, sample: AimSample, dt: number, settings
   }
 
   if (mode === 'directionCharge') {
-    if (!sample.charging) state.chargeBlock = false;
-    if (sample.cancel && (state.chargeOn || sample.charging)) {
+    if (!sample.charging && !sample.hold) state.chargeBlock = false;
+    if (sample.cancel && (state.chargeOn || sample.charging || sample.hold)) {
       state.chargeOn = false;
       state.chargeT = 0;
       state.chargeBlock = true;
       state.dist = settings.chargeMinDist;
       suppressThrow = true;
+    } else if (sample.hold) {
+      state.chargeOn = true;
     } else if (sample.charging && !state.chargeBlock) {
       state.chargeOn = true;
       state.chargeT += frame;

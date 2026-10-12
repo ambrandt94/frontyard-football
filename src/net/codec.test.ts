@@ -3,12 +3,12 @@ import { DEFAULTS } from '../config/defaults';
 import { createSim } from '../sim/sim';
 import { mulberry32 } from '../sim/rng';
 import { blankInput } from '../sim/types';
-import { frameToInput, inputToFrame, packSnapshot, parseMsg, present } from './codec';
+import { frameToInput, inputToFrame, packSnapshot, parseMsg, present, stripEdges } from './codec';
 import { applyGameplay, gameplaySettings } from './sync';
 
 describe('net codec', () => {
   it('round-trips an input frame, including aim and the snap bit', () => {
-    const inp = { ...blankInput(), mx: 0.2, my: 1, lt: true, a: true, y: true, aim: { x: 12, y: 40 }, throwPower: 0.4, rs: { x: 1, y: 0 } };
+    const inp = { ...blankInput(), mx: 0.2, my: 1, lt: true, a: true, y: true, rt: true, trigger: 0.62, aim: { x: 12, y: 40 }, throwPower: 0.4, rs: { x: 1, y: 0 } };
     const back = frameToInput(inputToFrame(inp, 7));
     expect(back.mx).toBeCloseTo(0.2);
     expect(back.my).toBe(1);
@@ -16,6 +16,12 @@ describe('net codec', () => {
     expect(back.a).toBe(true);
     expect(back.y).toBe(true);
     expect(back.throwPower).toBeCloseTo(0.4);
+    expect(back.trigger).toBeCloseTo(0.62);
+    expect(back.rt).toBe(true);
+    const analog = frameToInput({ ...inputToFrame(blankInput(), 2), rt: 0.6 });
+    expect(analog.trigger).toBeCloseTo(0.6);
+    expect(analog.rt).toBe(false);
+    expect(stripEdges({ ...blankInput(), trigger: 0.7, a: true, throwPower: 0.2 }).trigger).toBeCloseTo(0.7);
     expect(back.aim).toEqual({ x: 12, y: 40 });
     expect(back.rs).toEqual({ x: 1, y: 0 });
     expect(inputToFrame(blankInput(), 1).throwPower).toBe(-1);

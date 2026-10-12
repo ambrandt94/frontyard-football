@@ -12,6 +12,8 @@ export interface SimInput {
   sprint: boolean;
   aim: Vec2 | null;
   charge: number | null;
+  /** Analog RT, 0–1. The throw arm on the sim reads this. One-hand catch stays on `rt`. */
+  trigger: number;
   throwPower: number | null;
   y: boolean;
   rt: boolean;
@@ -27,7 +29,7 @@ export interface SimInput {
 
 export function blankInput(): SimInput {
   return {
-    mx: 0, my: 0, lt: false, sprint: false, aim: null, charge: null, throwPower: null,
+    mx: 0, my: 0, lt: false, sprint: false, aim: null, charge: null, trigger: 0, throwPower: null,
     y: false, rt: false, rb: false, a: false, x: false, b: false, start: false, rs: null,
     lbHeld: false, rbHeld: false,
   };
@@ -284,6 +286,8 @@ export interface SimState {
   route: string;
   /** Seconds a dead ball has sat with nobody holding it. */
   idleT: number;
+  /** Host-side throw arm. Charge, lob window, bullet, and pump fake. */
+  throwArm: ThrowArm;
   controlled: string;
   ctl: Record<ModeId, string>;
   ai: Record<string, AiBag>;
@@ -344,6 +348,9 @@ export interface AiBag {
   seenT?: number;
   /** Next time the defender AI may flick the right stick into a lunge. */
   lungeAt?: number;
+  /** Pump-fake bite: steer here until `biteUntil`. */
+  bite?: Vec2;
+  biteUntil?: number;
   /** Throw Around spot this bot is drifting toward. */
   spot?: { x: number; y: number };
   spotT?: number;
@@ -371,4 +378,19 @@ export interface StepFactor {
   f: number;
   mult: number;
   err: number;
+}
+
+export type ThrowPhase = 'idle' | 'charge' | 'window';
+export type ThrowAction = 'bullet' | 'lob' | 'pump' | 'cancel' | null;
+
+/** Deterministic charge / lob-window / pump arm. Sim time, not the wall clock. */
+export interface ThrowArm {
+  phase: ThrowPhase;
+  since: number;
+  lock: Vec2 | null;
+  prev: number;
+  /** Ignore the trigger until it drops below the release mark. */
+  wait: boolean;
+  pumpUntil: number;
+  last: 'none' | 'bullet' | 'lob' | 'pump' | 'brush' | 'cancel';
 }

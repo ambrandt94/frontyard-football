@@ -1,4 +1,7 @@
-/** Gamepad RT charge. Keyboard and mouse throws do not use this. */
+/**
+ * Gamepad RT charge latch. The throw itself is decided by the sim throw arm.
+ * Releasing here only ends the charge. It does not throw.
+ */
 
 export interface TriggerTune {
   engage: number;
@@ -56,14 +59,9 @@ export function stepTrigger(
     latch.peak = rt;
   }
   if (rt < release) {
-    const held = now - latch.since;
-    const power = triggerPower(latch.peak, engage);
     latch.charging = false;
     latch.peak = 0;
-    if (held >= tune.minHoldMs) {
-      latch.lock = true;
-      return { latch, charge: null, throwPower: power, catchEdge };
-    }
+    latch.lock = false;
     return { latch, charge: null, throwPower: null, catchEdge };
   }
   return { latch, charge: triggerPower(latch.peak, engage), throwPower: null, catchEdge };

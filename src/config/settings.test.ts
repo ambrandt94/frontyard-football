@@ -144,6 +144,8 @@ describe('settings schema', () => {
     expect(local.has('rtRelease')).toBe(true);
     expect(local.has('rtMinHoldMs')).toBe(true);
     expect(local.has('previewDefaultLoft')).toBe(true);
+    expect(local.has('lobWindow')).toBe(false);
+    expect(recommendedRange('lobWindow', 0.3)).toEqual([0.2, 0.5]);
     expect(local.has('accel')).toBe(false);
   });
 });

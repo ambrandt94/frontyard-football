@@ -172,7 +172,7 @@ export function updateHud(opts: {
     const tick = power.querySelector('.tick') as HTMLElement | null;
     const engage = Math.max(0, Math.min(0.9, S.rtEngage));
     if (tick) tick.style.left = `${engage * 100}%`;
-    const mark = input.device === 'gamepad' ? engage + inp.charge * (1 - engage) : inp.charge;
+    const mark = inp.charge;
     if (fill) fill.style.left = `${mark * 100}%`;
     const powv = document.getElementById('powv');
     if (powv) powv.textContent = Math.round(inp.charge * 100) + '%';

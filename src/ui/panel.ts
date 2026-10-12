@@ -411,6 +411,13 @@ export function createPanel(opts: {
   ft.add(S, 'baseInaccuracy', 0, 3, 0.05).name('scatter (yd per 20yd)');
   ft.add(S, 'unsquaredInaccuracy', 1, 4, 0.05).name('not-squared scatter ×');
   ft.add(S, 'kbChargeTime', 0.2, 2, 0.05).name('kb/mouse full-power time');
+  ft.add(S, 'bulletAngleDeg', 3, 25, 0.5).name('bullet angle°');
+  ft.add(S, 'lobAngleDeg', 18, 55, 0.5).name('lob angle°');
+  ft.add(S, 'throwVarianceDeg', 0, 8, 0.1).name('throw angle variation°');
+  ft.add(S, 'bulletSqueeze', 0.5, 1, 0.01).name('bullet squeeze');
+  ft.add(S, 'lobPress', 0.5, 1, 0.01).name('lob press');
+  ft.add(S, 'lobWindow', 0.05, 1.5, 0.01).name('lob window (s)');
+  ft.add(S, 'pumpBite', 0, 1, 0.01).name('pump fake bite chance');
 
   const fc = gui.addFolder('Catching');
   fc.add(S, 'catchWindowMs', 40, 400, 5).name('Y catch window (ms)');

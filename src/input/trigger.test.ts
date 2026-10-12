@@ -28,16 +28,16 @@ describe('RT engage threshold', () => {
     expect(triggerPower(0.35, 0.35)).toBeCloseTo(0);
   });
 
-  it('releases the throw only once RT drops below 0.12', () => {
+  it('a dip to 0.25 keeps the charge, and releasing below 0.12 does not throw', () => {
     const held = stepTrigger(freshTrigger(), 0.8, 0, 0, tune);
     const dip = stepTrigger(held.latch, 0.25, 100, 0.8, tune);
     expect(dip.throwPower).toBeNull();
     expect(dip.latch.charging).toBe(true);
     expect(dip.latch.peak).toBeCloseTo(0.8);
-    const thrown = stepTrigger(dip.latch, 0.05, 200, 0.25, tune);
-    expect(thrown.throwPower).toBeCloseTo((0.8 - 0.35) / (1 - 0.35));
-    expect(thrown.latch.charging).toBe(false);
-    expect(thrown.latch.lock).toBe(true);
+    const released = stepTrigger(dip.latch, 0.05, 200, 0.25, tune);
+    expect(released.throwPower).toBeNull();
+    expect(released.latch.charging).toBe(false);
+    expect(released.charge).toBeNull();
   });
 
   it('treats a brush under 80 ms as no charge', () => {

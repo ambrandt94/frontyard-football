@@ -58,7 +58,8 @@ const BODY = [
   ].join('')),
   section('qb', 'Quarterback', [
     row(`${RS} ${key('Mouse')} ${key('K')}`, 'Aim. K switches Absolute+ (angle and distance) and Direction charge (the stick picks the line, RT slides the distance). B cancels a charge. The arc is up before the throw.'),
-    row(`${RT} ${key('F')}`, 'Throw. Pull RT past the engage mark, then let it go. A light or resting hold does nothing. Soft, just over the mark, is a loft. Hard is a bullet. Keyboard and mouse still charge on time.'),
+    row(`${RT}`, 'Charge. Pull past the engage mark and the distance grows. Squeeze RT all the way for a bullet at that spot. Let go, and you have a short window to pull it again for a lob to the locked spot. Miss the window and it is a pump fake. A light brush does nothing. B cancels.'),
+    row(`${key('Mouse')} ${key('F')}`, 'Hold the left button to charge. F while that hold is down throws the bullet. Right-click, or click again, during the lob window for the lob.'),
     row(`${LB} ${RB} ×2`, `Pitch left or right. Flick ${RS} to aim it.`),
   ].join('')),
   section('receiver', 'Receiver', [
@@ -66,7 +67,8 @@ const BODY = [
     row(`${RT} ${key('F')}`, 'One-hand catch.'),
     row(`${RB} ${key('V')}`, 'Tap to plant. Hold to stretch into a toe-tap.'),
     row(`${A} ${X} ${B}`, 'Jump, dive, or bat the ball.'),
-    row(`${LT} ${key('Q')}`, 'Square up for a two-hand catch.'),
+    row(`${LT} ${key('Q')}`, 'Square up for a two-hand catch. Catch mode and Throw Around use this whole set. In Throw Around, anyone who is not holding the ball is the receiver.'),
+    row(`${RS} ${key('Arrows')}`, 'After the catch, Throw Around keeps the carrier flicks, hurdle, and dive. The player with the ball is the quarterback until they throw it.'),
   ].join('')),
   section('carrier', 'Ball carrier', [
     row(`${RS} ${key('Arrows')}`, 'Flick with your run: sideways sidesteps, up trucks, down jukes, diagonals spin.'),

@@ -35,7 +35,7 @@ export function inputToFrame(inp: SimInput, seq: number): InputFrame {
     mx: inp.mx,
     my: inp.my,
     lt: inp.lt ? 1 : 0,
-    rt: inp.rt ? 1 : 0,
+    rt: inp.trigger || 0,
     buttons: packButtons(inp),
     aimX: inp.aim ? inp.aim.x : null,
     aimY: inp.aim ? inp.aim.y : null,
@@ -50,14 +50,15 @@ export function frameToInput(frame: InputFrame): SimInput {
   inp.mx = frame.mx;
   inp.my = frame.my;
   inp.lt = frame.lt > 0.35;
-  applyButtons(inp, frame.buttons | (frame.rt > 0.5 ? BTN.rt : 0));
+  applyButtons(inp, frame.buttons);
+  inp.trigger = Math.max(0, Math.min(1, frame.rt || 0));
   if (frame.aimX != null && frame.aimY != null) inp.aim = { x: frame.aimX, y: frame.aimY };
   if (frame.throwPower >= 0) inp.throwPower = frame.throwPower;
   if (frame.rsX != null && frame.rsY != null) inp.rs = { x: frame.rsX, y: frame.rsY };
   return inp;
 }
 
-/** Second 1/120 substep of a 60 Hz tick: keep axes, drop edges so a throw or snap does not repeat. */
+/** Second 1/120 substep of a 60 Hz tick: keep axes and the analog trigger, drop edges so a throw or snap does not repeat. */
 export function stripEdges(inp: SimInput): SimInput {
   return { ...inp, sprint: false, y: false, rt: false, rb: false, a: false, x: false, b: false, start: false, throwPower: null };
 }
