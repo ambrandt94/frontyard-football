@@ -59,6 +59,8 @@ describe('settings schema', () => {
     expect(saved.host.accel).toBe(18);
     expect(saved.host.deadzone).toBeUndefined();
     expect(saved.local.deadzone).toBe(DEFAULTS.deadzone);
+    expect(saved.host.camStyle).toBeUndefined();
+    expect(saved.local.camStyle).toBe('all22');
     expect(saved.host.aimResponse).toBeUndefined();
     expect(saved.local.aimResponse).toBe(DEFAULTS.aimResponse);
     expect(saved.local.aimReturnHold).toBe(DEFAULTS.aimReturnHold);
@@ -95,6 +97,11 @@ describe('settings schema', () => {
     const local = new Set<string>(LOCAL_KEYS);
     for (const key of HOST_KEYS) expect(local.has(key)).toBe(false);
     expect(local.has('deadzone')).toBe(true);
+    expect(local.has('camStyle')).toBe(true);
+    expect(local.has('camPitch')).toBe(true);
+    expect(local.has('camFov')).toBe(true);
+    expect(local.has('camHeightBias')).toBe(true);
+    expect(local.has('camUpfieldBias')).toBe(true);
     expect(local.has('aimResponse')).toBe(true);
     expect(local.has('aimCurve')).toBe(true);
     expect(local.has('aimDeadzone')).toBe(true);

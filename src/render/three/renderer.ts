@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { Settings } from '../../config/defaults';
 import { CAM_FOV, FIELD_L, FIELD_W, LOS_Y } from '../../config/constants';
 import { clamp } from '../../sim/math';
+import { angledPose } from '../camera';
 import type { Player } from '../../sim/types';
 import { PLAYER_COLORS } from '../colors';
 import { makeFieldCanvas } from '../field';
@@ -196,6 +197,29 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
     }
   }
 
+  function placeCamera(view: ViewState) {
+    const c = view.cam;
+    const angled = !!c.rig && c.rig !== 'topdown';
+    if (!angled) {
+      camera.up.set(0, 0, -1);
+      camera.fov = CAM_FOV;
+      camera.position.set(c.x, c.h, -c.y);
+      camera.lookAt(c.x, 0, -c.y);
+      camera.near = 1;
+      camera.far = 400;
+    } else {
+      camera.fov = c.fov > 1 ? c.fov : CAM_FOV;
+      const pose = angledPose(c.lookX, c.lookY, Math.max(12, c.dist), c.pitch, c.azimuth);
+      camera.up.set(0, 1, 0);
+      camera.position.set(pose.px, pose.py, pose.pz);
+      camera.lookAt(pose.lx, pose.ly, pose.lz);
+      camera.near = 0.5;
+      camera.far = 900;
+    }
+    camera.updateProjectionMatrix();
+    camera.updateMatrixWorld();
+  }
+
   const api: FieldRenderer = {
     name: 'three',
     init(container) {
@@ -254,8 +278,11 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
       const r2 = mk(new THREE.PlaneGeometry(2.6, 0.12), 0xffeb3b);
       const r3 = mk(new THREE.PlaneGeometry(0.12, 2.6), 0xffeb3b);
       reticle.add(r1, r2, r3);
+      reticle.frustumCulled = false;
+      reticle.traverse((obj) => { obj.frustumCulled = false; });
       scene.add(reticle);
       landing = mk(new THREE.RingGeometry(0.5, 0.75, 32), 0xff7043);
+      landing.frustumCulled = false;
       cue = mk(new THREE.RingGeometry(0.88, 1.0, 48), 0xffeb3b);
       api.resize();
     },
@@ -267,9 +294,7 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
       camera.updateProjectionMatrix();
     },
     sync(st, view) {
-      camera.up.set(0, 0, -1);
-      camera.position.set(view.cam.x, view.cam.h, -view.cam.y);
-      camera.lookAt(view.cam.x, 0, -view.cam.y);
+      placeCamera(view);
       syncSheet(view);
       los.visible = st.mode === 'throw' || st.mode === 'coverage';
       const goalY = st.carry?.goalY ?? 110;

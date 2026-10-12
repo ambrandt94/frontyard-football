@@ -211,6 +211,16 @@ export interface Settings {
   cameraMinExtent: number;
   cameraPadding: number;
   cameraFollow: number;
+  /** 3D camera. The flat field stays top-down. */
+  camStyle: 'all22' | 'topdown' | 'broadcast';
+  /** Degrees down from the horizon. All-22 and the sideline view. */
+  camPitch: number;
+  /** Vertical field of view, degrees. */
+  camFov: number;
+  /** Pulls the angled camera back along its pitch. 1 is the fitted distance. */
+  camHeightBias: number;
+  /** Slides the look point toward the goal, in yards. */
+  camUpfieldBias: number;
   playerScale: number;
   playerVisuals: 'model' | 'capsule';
   modelHeightYd: number;
@@ -410,6 +420,11 @@ export const DEFAULTS: Settings = {
   cameraMinExtent: 40,
   cameraPadding: 7,
   cameraFollow: 3.0,
+  camStyle: 'all22',
+  camPitch: 42,
+  camFov: 36,
+  camHeightBias: 1.12,
+  camUpfieldBias: 8,
   playerScale: 1.25,
   playerVisuals: 'model',
   modelHeightYd: 2.0,
@@ -426,6 +441,7 @@ export const DEFAULTS: Settings = {
 const ENUMS: Partial<Record<keyof Settings, readonly string[]>> = {
   playerVisuals: ['model', 'capsule'],
   renderer: ['three', 'canvas2d'],
+  camStyle: ['all22', 'topdown', 'broadcast'],
   covAlign: ['press', 'off'],
   covShade: ['inside', 'outside'],
 };

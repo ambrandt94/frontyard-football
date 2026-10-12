@@ -52,7 +52,7 @@ const BODY = [
     row(`${BACK} ${key('Tab')}`, 'Switch the player you control.'),
     row(`${START} ${key('R')}`, 'Reset the play. In Catch, Start pauses throws. Hold Start, or Back+Start, to hide this card.'),
     row(`${key('H')} ${key('G')}`, 'Hide this card. G hides the settings panel. ` shows the net readout.'),
-    row(`${key('N')} ${key('M')}`, 'Next mode (D-pad up). M swaps 3D and the flat field. Wheel zooms.'),
+    row(`${key('N')} ${key('M')}`, 'Next mode (D-pad up). M swaps 3D and the flat field. The 3D view starts as an All-22 angle. Wheel zooms.'),
     row(`${key('T')}`, 'Slow motion. Cycles 0.5×, 0.25×, and full speed.'),
   ].join('')),
   section('qb', 'Quarterback', [

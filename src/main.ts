@@ -4,6 +4,7 @@ import { applyControlPreset, BUILTIN_PRESETS } from './config/presets';
 import { browserStore, loadSettings, saveSettings } from './config/settings';
 import { nextTimeScale, timeScaleOf } from './config/timeScale';
 import { CAM_FOV, FIELD_W, LOS_Y, ROUTES, STEP } from './config/constants';
+import { fitAngledCamera, rigAzimuth, type FramePoint } from './render/camera';
 import { MODE_LABEL, MP_MODE_IDS, nextMode, type ModeId } from './modes';
 import { clamp, rad } from './sim/math';
 import { createSim } from './sim/sim';
@@ -65,7 +66,7 @@ viewEl.addEventListener('wheel', (e) => {
 
 const input = createInput(S, viewEl);
 const aimState = createAimState();
-const cam = { x: FIELD_W / 2, y: LOS_Y + 3, ext: DEFAULTS.cameraMinExtent };
+const cam = { x: FIELD_W / 2, y: LOS_Y + 3, ext: DEFAULTS.cameraMinExtent, lookX: FIELD_W / 2, lookY: LOS_Y + 14, dist: 110 };
 let acc = 0;
 let last = performance.now();
 const help = createHelp(must('help'), must('controls-pill'));
@@ -187,14 +188,20 @@ function frame(now: number) {
   }
 
   const b = st.ball;
-  const pts: { x: number; y: number }[] = [...Object.values(st.players), { x: b.x, y: b.y }];
+  const attack: 1 | -1 = st.carry?.goalSign ?? 1;
+  const showRoute = (st.mode === 'coverage' || (st.mode === 'throw' && st.controlled === 'qb')) && st.play.phase !== 'over' && st.ball.holder === 'qb';
+  const route = showRoute ? [{ x: 12, y: LOS_Y - 0.6 }, ...sim.routeWaypoints(st.route)] : null;
+  const pts: FramePoint[] = [];
+  for (const p of Object.values(st.players)) pts.push({ x: p.x, y: p.y, z: p.z + 2 });
+  pts.push({ x: b.x, y: b.y, z: Math.max(b.z, 0.3) });
   if (st.mode === 'catch' && st.cm?.cur && b.state === 'air') pts.push(st.cm.cur.tgt);
   if (st.mode === 'run') {
     const c = st.players.rb;
-    pts.push({ x: c.x, y: 110 }, { x: c.x, y: 116 });
+    if (c) pts.push({ x: c.x, y: 110 }, { x: c.x, y: 116 });
   }
   if (b.state === 'air' && b.landing) pts.push(b.landing);
   if (reticle) pts.push(reticle);
+  if (route) for (const p of route) pts.push(p);
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
   for (const p of pts) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y); }
   const vw = viewEl!.clientWidth || innerWidth;
@@ -210,12 +217,37 @@ function frame(now: number) {
   cam.y += (ty - cam.y) * k;
   cam.ext += (needH - cam.ext) * (needH > cam.ext ? Math.min(1, k * 2.5) : k * 0.6);
 
+  const rig = S.camStyle === 'topdown' || S.camStyle === 'broadcast' ? S.camStyle : 'all22';
+  const azimuth = rig === 'topdown' ? 0 : rigAzimuth(rig, attack);
+  if (rig !== 'topdown' && pts.length) {
+    const fit = fitAngledCamera({
+      points: pts,
+      aspect: Math.max(0.3, aspect),
+      pitch: S.camPitch,
+      fov: S.camFov,
+      azimuth,
+      upfieldBias: S.camUpfieldBias,
+      heightBias: S.camHeightBias,
+      minYards: S.cameraMinExtent,
+      padding: S.cameraPadding,
+      panelShift: guiW > 0 ? (guiW / 2) * (cam.ext / Math.max(vh, 1)) : 0,
+      attack,
+    });
+    const dlx = fit.lookX - cam.lookX;
+    const dly = fit.lookY - cam.lookY;
+    const lookFar = Math.hypot(dlx, dly) > 6;
+    const lookDead = Math.hypot(dlx, dly) <= 0.45;
+    const kLook = lookDead ? k * 0.12 : lookFar ? Math.min(1, k * 2.2) : k;
+    cam.lookX += dlx * kLook;
+    cam.lookY += dly * kLook;
+    const grow = fit.dist > cam.dist;
+    const kDist = grow ? Math.min(1, k * 2.8) : k * 0.42;
+    if (Math.abs(fit.dist - cam.dist) > Math.max(0.8, cam.dist * 0.012)) cam.dist += (fit.dist - cam.dist) * kDist;
+  }
+
   const qb = st.players.qb;
   let preview = null;
   if (thrower && st.ball.holder === thrower.id && inp.charge !== null && reticle) preview = sim.previewThrow(inp.charge, reticle).arc;
-  const route = (st.mode === 'coverage' || (st.mode === 'throw' && st.controlled === 'qb')) && st.play.phase !== 'over' && st.ball.holder === 'qb'
-    ? [{ x: 12, y: LOS_Y - 0.6 }, ...sim.routeWaypoints(st.route)]
-    : null;
   for (const p of Object.values(st.players)) {
     const h = sim.handPos(p);
     p.handX = h.x;
@@ -225,7 +257,10 @@ function frame(now: number) {
   viewState = {
     cue: cmw && qb ? { x: qb.x, y: qb.y, frac: clamp((st.t - cmw.windupStart) / Math.max(0.01, cmw.windupEnd - cmw.windupStart), 0, 1) } : null,
     trails: updateTrails(),
-    cam: { x: cam.x, y: cam.y, h: cam.ext / (2 * Math.tan(rad(CAM_FOV / 2))), ext: cam.ext },
+    cam: {
+      x: cam.x, y: cam.y, h: cam.ext / (2 * Math.tan(rad(CAM_FOV / 2))), ext: cam.ext,
+      rig, fov: S.camFov, pitch: S.camPitch, dist: cam.dist, azimuth, lookX: cam.lookX, lookY: cam.lookY,
+    },
     reticle,
     preview,
     route,

@@ -8,7 +8,20 @@ export interface ViewTrail {
 export interface ViewState {
   cue: { x: number; y: number; frac: number } | null;
   trails: ViewTrail[];
-  cam: { x: number; y: number; h: number; ext: number };
+  cam: {
+    x: number;
+    y: number;
+    h: number;
+    ext: number;
+    /** Three.js rig. The flat renderer ignores everything but x, y, and h. */
+    rig: 'all22' | 'topdown' | 'broadcast';
+    fov: number;
+    pitch: number;
+    dist: number;
+    azimuth: number;
+    lookX: number;
+    lookY: number;
+  };
   reticle: { x: number; y: number } | null;
   preview: { x: number; y: number; z?: number }[] | null;
   route: { x: number; y: number; z?: number }[] | null;

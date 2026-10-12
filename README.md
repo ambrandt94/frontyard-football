@@ -34,6 +34,8 @@ Cycle with **N** or **D-pad up**, or the Mode dropdown.
 
 ## Controls
 
+The 3D field opens on an All-22 angle behind the offense, with upfield toward the top of the screen. View settings can switch that to the old top-down camera or a sideline broadcast angle, and tune pitch, field of view, height, and how far the camera looks upfield. The flat renderer stays top-down. Stick directions stay tied to the field, not the camera.
+
 The controls card is a small overlay. The first visit shows it; after that it starts hidden, and a **? Controls (H)** pill in the corner opens it again. **H** hides or shows it. On a controller, hold **Start** or press **Back+Start**. **G** hides the settings panel. The card lists the roles for the mode you are in, with **Show all** for the rest. A controller with the standard mapping is preferred; keyboard and mouse cover the same actions.
 
 ### Gamepad
