@@ -61,9 +61,9 @@ describe('settings schema', () => {
     expect(saved.local.deadzone).toBe(DEFAULTS.deadzone);
     expect(saved.host.camStyle).toBeUndefined();
     expect(saved.local.camStyle).toBe('all22');
-    expect(saved.host.aimResponse).toBeUndefined();
-    expect(saved.local.aimResponse).toBe(DEFAULTS.aimResponse);
-    expect(saved.local.aimReturnHold).toBe(DEFAULTS.aimReturnHold);
+    expect(saved.host.aimMode).toBeUndefined();
+    expect(saved.local.aimMode).toBe('absolutePlus');
+    expect(saved.local.aimGraceMs).toBe(DEFAULTS.aimGraceMs);
     expect(saved.local.accel).toBeUndefined();
 
     let presets = emptyPresetStore();
@@ -102,11 +102,12 @@ describe('settings schema', () => {
     expect(local.has('camFov')).toBe(true);
     expect(local.has('camHeightBias')).toBe(true);
     expect(local.has('camUpfieldBias')).toBe(true);
-    expect(local.has('aimResponse')).toBe(true);
-    expect(local.has('aimCurve')).toBe(true);
+    expect(local.has('aimMode')).toBe(true);
     expect(local.has('aimDeadzone')).toBe(true);
-    expect(local.has('aimReturnHold')).toBe(true);
-    expect(local.has('aimMaxSpeed')).toBe(true);
+    expect(local.has('aimMinDist')).toBe(true);
+    expect(local.has('aimMaxDist')).toBe(true);
+    expect(local.has('chargePingPong')).toBe(true);
+    expect(local.has('previewDefaultLoft')).toBe(true);
     expect(local.has('accel')).toBe(false);
   });
 });

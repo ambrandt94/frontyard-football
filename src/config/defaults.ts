@@ -18,22 +18,41 @@ export interface Settings {
   easeOffStick: number;
   ltSpeedCap: number;
   deadzone: number;
-  /** Critically damped aim follow, in 1/s. Higher catches the stick sooner. */
-  aimResponse: number;
-  /** Exponent on stick magnitude after the aim deadzone. Higher is finer near the middle. */
-  aimCurve: number;
+  /** Absolute+ or direction charge. Local to this player. */
+  aimMode: 'absolutePlus' | 'directionCharge';
   /** Radial deadzone used only for aiming. Movement still uses `deadzone`. */
   aimDeadzone: number;
-  /** How long a quick stick return keeps the aimed spot before easing home. */
-  aimReturnHold: number;
-  /** Fastest the reticle may travel, in yards per second. */
-  aimMaxSpeed: number;
+  /** Absolute+: closest the stick can place the reticle, yards from the QB. */
+  aimMinDist: number;
+  /** Absolute+: full-stick distance, yards. */
+  aimMaxDist: number;
+  /** Absolute+: exponent on stick magnitude past the deadzone. */
+  aimDistExp: number;
+  /** One Euro minimum cutoff, hertz. Shared by angle and magnitude. */
+  aimEuroMin: number;
+  /** One Euro speed coefficient. Higher lets a flick through. */
+  aimEuroBeta: number;
+  /** Absolute+ and direction charge ignore smaller angle changes at high magnitude. */
+  aimAngleDeadband: number;
+  /** How long a stick spring-back keeps the aimed spot, milliseconds. */
+  aimGraceMs: number;
+  /** Direction charge: distance when the trigger is first pressed. */
+  chargeMinDist: number;
+  /** Direction charge: farthest the marker travels, yards. */
+  chargeMaxDist: number;
+  /** Direction charge: seconds from min distance to max. */
+  chargeTime: number;
+  /** Direction charge: exponent on the charge clock. */
+  chargeExp: number;
+  /** Direction charge: the marker reverses after it reaches max distance. */
+  chargePingPong: boolean;
+  /** Arc loft used before the trigger is touched. 0 is a loft, 1 is a bullet. */
+  previewDefaultLoft: number;
   facingTurnRate: number;
   minThrowSpeed: number;
   maxThrowSpeed: number;
   minLoftDeg: number;
   maxLoftDeg: number;
-  maxAimRange: number;
   stepIntoBonus: number;
   backFootPenalty: number;
   baseInaccuracy: number;
@@ -258,18 +277,26 @@ export const DEFAULTS: Settings = {
   easeOffStick: 0.85,
   ltSpeedCap: 4,
   deadzone: 0.15,
-  // Local aim feel. The reticle eases after the stick and holds on a quick release.
-  aimResponse: 9,
-  aimCurve: 1.7,
-  aimDeadzone: 0.2,
-  aimReturnHold: 0.4,
-  aimMaxSpeed: 90,
+  aimMode: 'absolutePlus',
+  aimDeadzone: 0.12,
+  aimMinDist: 3,
+  aimMaxDist: 50,
+  aimDistExp: 1.6,
+  aimEuroMin: 1,
+  aimEuroBeta: 0.02,
+  aimAngleDeadband: 0.6,
+  aimGraceMs: 120,
+  chargeMinDist: 5,
+  chargeMaxDist: 60,
+  chargeTime: 1.1,
+  chargeExp: 1.4,
+  chargePingPong: false,
+  previewDefaultLoft: 0.5,
   facingTurnRate: 18,
   minThrowSpeed: 13,
   maxThrowSpeed: 29,
   minLoftDeg: 4,
   maxLoftDeg: 42,
-  maxAimRange: 45,
   stepIntoBonus: 0.12,
   backFootPenalty: 0.2,
   baseInaccuracy: 0.5,
@@ -442,6 +469,7 @@ const ENUMS: Partial<Record<keyof Settings, readonly string[]>> = {
   playerVisuals: ['model', 'capsule'],
   renderer: ['three', 'canvas2d'],
   camStyle: ['all22', 'topdown', 'broadcast'],
+  aimMode: ['absolutePlus', 'directionCharge'],
   covAlign: ['press', 'off'],
   covShade: ['inside', 'outside'],
 };

@@ -15,6 +15,7 @@ export interface InputMeta {
   cycleTime: boolean;
   mode: boolean;
   posePreview: boolean;
+  cycleAim: boolean;
 }
 
 export interface PolledInput extends SimInput {
@@ -86,7 +87,7 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
     mouse,
     poll() {
       const inp = blankInput() as PolledInput;
-      const meta: InputMeta = { switch: false, reset: false, start: false, routeDelta: 0, route: null, toggleRenderer: false, toggleHelp: false, toggleGui: false, cycleTime: false, mode: false, posePreview: false };
+      const meta: InputMeta = { switch: false, reset: false, start: false, routeDelta: 0, route: null, toggleRenderer: false, toggleHelp: false, toggleGui: false, cycleTime: false, mode: false, posePreview: false, cycleAim: false };
       const pad = getPad();
       let padMove: { x: number; y: number } | null = null;
       let aimStick: { x: number; y: number } | null = null;
@@ -189,6 +190,7 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
       if (e('BracketLeft')) meta.routeDelta = -1;
       ROUTES.forEach((name, i) => { if (i < 9 && e(`Digit${i + 1}`)) meta.route = name; });
       if (e('KeyM')) meta.toggleRenderer = true;
+      if (e('KeyK')) meta.cycleAim = true;
       if (e('KeyH')) meta.toggleHelp = true;
       if (e('KeyG')) meta.toggleGui = true;
       if (e('KeyT')) meta.cycleTime = true;

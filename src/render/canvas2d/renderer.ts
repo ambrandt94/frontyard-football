@@ -80,7 +80,38 @@ export function createCanvasRenderer(S: Settings): FieldRenderer {
         if (b.landing) ring(b.landing.x, b.landing.y, 0.6, '#ff7043', 3);
       }
       if (view.cue) ring(view.cue.x, view.cue.y, 1 + 2.5 * (1 - view.cue.frac), '#ffeb3b', 3);
-      if (view.preview) poly(view.preview.map((p) => ({ x: p.x, y: p.y + (p.z || 0) * 0.35 })), 'rgba(128,222,234,.8)', 2);
+      if (view.aimGuide) {
+        poly([{ x: view.aimGuide.x, y: view.aimGuide.y }, { x: view.aimGuide.x2, y: view.aimGuide.y2 }], 'rgba(255,255,255,.35)', 1.5);
+      }
+      if (view.preview && view.preview.length > 1) {
+        const loft = Math.max(0, Math.min(1, view.previewLoft || 0));
+        const cr = Math.round(66 + (255 - 66) * loft);
+        const cg = Math.round(165 + (112 - 165) * loft);
+        const cb = Math.round(245 + (67 - 245) * loft);
+        const pts = view.preview;
+        for (let i = 1; i < pts.length; i++) {
+          const t = i / (pts.length - 1);
+          g.globalAlpha = 0.92 * (1 - t * 0.88);
+          g.strokeStyle = `rgb(${cr},${cg},${cb})`;
+          g.lineWidth = Math.max(1, 3.2 * (1 - t * 0.75));
+          g.setLineDash(i % 2 === 0 ? [5, 7] : []);
+          const [x0, y0] = P(pts[i - 1].x, pts[i - 1].y + (pts[i - 1].z || 0) * 0.35);
+          const [x1, y1] = P(pts[i].x, pts[i].y + (pts[i].z || 0) * 0.35);
+          g.beginPath();
+          g.moveTo(x0, y0);
+          g.lineTo(x1, y1);
+          g.stroke();
+        }
+        g.setLineDash([]);
+        g.globalAlpha = 1;
+      }
+      if (view.previewRing) {
+        const loft = Math.max(0, Math.min(1, view.previewLoft || 0));
+        const cr = Math.round(66 + (255 - 66) * loft);
+        const cg = Math.round(165 + (112 - 165) * loft);
+        const cb = Math.round(245 + (67 - 245) * loft);
+        ring(view.previewRing.x, view.previewRing.y, view.previewRing.r, `rgb(${cr},${cg},${cb})`, 2);
+      }
       if (view.reticle) {
         const r = view.reticle;
         ring(r.x, r.y, 1, '#ffeb3b', 3);

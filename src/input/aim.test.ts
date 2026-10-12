@@ -1,158 +1,163 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULTS } from '../config/defaults';
-import { radialDeadzone } from '../sim/math';
-import { createAimState, stepAim } from './aim';
+import { createSim } from '../sim/sim';
+import {
+  chargeDistance,
+  createAimState,
+  polarDistance,
+  resampleArc,
+  stepAim,
+  type AimSample,
+} from './aim';
 
-const DT = 1 / 60;
+const DT = 1 / 120;
 
-function dist(a: { x: number; y: number }, b: { x: number; y: number }): number {
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
-/** Mean squared distance from the centroid. This is the old reticle's twitch. */
-function variance(samples: { x: number; y: number }[]): number {
-  let mx = 0;
-  let my = 0;
-  for (const p of samples) {
-    mx += p.x;
-    my += p.y;
-  }
-  mx /= samples.length;
-  my /= samples.length;
-  let v = 0;
-  for (const p of samples) v += (p.x - mx) ** 2 + (p.y - my) ** 2;
-  return v / samples.length;
-}
-
-/** What the reticle used to do: movement deadzone, then a straight map to yards. */
-function instantAim(stick: { x: number; y: number }): { x: number; y: number } {
-  const r = radialDeadzone(stick.x, stick.y, DEFAULTS.deadzone);
-  return { x: r.x * DEFAULTS.maxAimRange, y: r.y * DEFAULTS.maxAimRange };
-}
-
-function jitterStick(i: number): { x: number; y: number } {
+function sample(stick: { x: number; y: number } | null, extra: Partial<AimSample> = {}): AimSample {
   return {
-    x: 0.62 + Math.sin(i * 1.7) * 0.14 + Math.sin(i * 4.3) * 0.05,
-    y: -0.48 + Math.cos(i * 1.3) * 0.12 + Math.sin(i * 5.1) * 0.04,
+    stick,
+    mouse: null,
+    qb: { x: 0, y: 0 },
+    charging: false,
+    pressure: null,
+    cancel: false,
+    ...extra,
   };
 }
 
-describe('QB aim feel', () => {
-  it('shrinks reticle variance under scripted stick jitter', () => {
+describe('aim spec v1', () => {
+  it('polar distance is monotonic and hits the ends', () => {
+    const min = DEFAULTS.aimMinDist;
+    const max = DEFAULTS.aimMaxDist;
+    const exp = DEFAULTS.aimDistExp;
+    expect(polarDistance(0, min, max, exp)).toBe(min);
+    expect(polarDistance(1, min, max, exp)).toBe(max);
+    let prev = -Infinity;
+    for (let i = 0; i <= 20; i++) {
+      const m = i / 20;
+      const d = polarDistance(m, min, max, exp);
+      expect(d).toBeGreaterThanOrEqual(prev);
+      prev = d;
+    }
+    const mid = polarDistance(0.5, min, max, exp);
+    const linear = min + (max - min) * 0.5;
+    expect(mid).toBeLessThan(linear);
+  });
+
+  it('keeps a noisy full stick inside 0.3 yd at 50 yards', () => {
     const state = createAimState();
-    const raw: { x: number; y: number }[] = [];
-    const smooth: { x: number; y: number }[] = [];
     let now = 0;
-    const total = 270;
-    const settle = 120;
+    const pts: { x: number; y: number }[] = [];
+    const total = 240;
+    const settle = 90;
     for (let i = 0; i < total; i++) {
+      now += 1 / 60;
+      const n1 = ((i * 17) % 11) / 10 * 0.02 - 0.01;
+      const n2 = ((i * 13) % 11) / 10 * 0.02 - 0.01;
+      const stick = i < 30 ? { x: 0, y: 1 } : { x: n1, y: 1 + n2 };
+      const out = stepAim(state, sample(stick), 1 / 60, DEFAULTS, now);
+      if (i >= settle) pts.push({ x: out.x, y: out.y });
+    }
+    let mx = 0;
+    let my = 0;
+    for (const p of pts) {
+      mx += p.x;
+      my += p.y;
+    }
+    mx /= pts.length;
+    my /= pts.length;
+    let max = 0;
+    let rms = 0;
+    for (const p of pts) {
+      const d = Math.hypot(p.x - mx, p.y - my);
+      max = Math.max(max, d);
+      rms += d * d;
+    }
+    rms = Math.sqrt(rms / pts.length);
+    console.log(
+      `aim jitter n=${pts.length} max=${max.toFixed(3)} yd rms=${rms.toFixed(3)} yd ` +
+        `center=(${mx.toFixed(2)}, ${my.toFixed(2)}) dist=${Math.hypot(mx, my).toFixed(2)}`,
+    );
+    expect(Math.hypot(mx, my)).toBeGreaterThan(45);
+    expect(max).toBeLessThan(0.3);
+  });
+
+  it('settles a 90° flick within 60 ms', () => {
+    const state = createAimState();
+    let now = 0;
+    for (let i = 0; i < 30; i++) {
       now += DT;
-      const stick = jitterStick(i);
-      const off = stepAim(state, stick, DT, DEFAULTS, now);
-      if (i >= settle) {
-        raw.push(instantAim(stick));
-        smooth.push(off);
+      stepAim(state, sample({ x: 0, y: 1 }), DT, DEFAULTS, now);
+    }
+    const t0 = now;
+    let settled = -1;
+    for (let i = 0; i < 20; i++) {
+      now += DT;
+      const out = stepAim(state, sample({ x: 1, y: 0 }), DT, DEFAULTS, now);
+      const ang = Math.atan2(out.x, out.y) * 180 / Math.PI;
+      if (Math.abs(ang - 90) < 2) {
+        settled = now - t0;
+        break;
       }
     }
-    const rawVar = variance(raw);
-    const smoothVar = variance(smooth);
-    const ratio = smoothVar / rawVar;
-    console.log(
-      `aim jitter variance raw=${rawVar.toFixed(4)} (rms ${Math.sqrt(rawVar).toFixed(3)} yd) ` +
-        `smoothed=${smoothVar.toFixed(4)} (rms ${Math.sqrt(smoothVar).toFixed(3)} yd) ` +
-        `ratio=${ratio.toFixed(4)}`,
-    );
-    expect(state.holding).toBe(false);
-    expect(rawVar).toBeGreaterThan(1);
-    expect(ratio).toBeLessThan(0.25);
+    console.log(`aim flick settle=${(settled * 1000).toFixed(1)} ms angle=${state.angleDeg.toFixed(2)}°`);
+    expect(settled).toBeGreaterThan(0);
+    expect(settled).toBeLessThanOrEqual(0.06);
   });
 
-  it('keeps the aimed spot when the stick springs back on the throw', () => {
+  it('direction charge matches d(t) and B cancels', () => {
+    const min = DEFAULTS.chargeMinDist;
+    const max = DEFAULTS.chargeMaxDist;
+    const time = DEFAULTS.chargeTime;
+    const exp = DEFAULTS.chargeExp;
+    expect(chargeDistance(0, min, max, time, exp, false)).toBe(min);
+    expect(chargeDistance(time, min, max, time, exp, false)).toBeCloseTo(max, 6);
+    expect(chargeDistance(time * 2, min, max, time, exp, false)).toBe(max);
+    const midT = 0.55;
+    const formula = min + (max - min) * (midT / time) ** exp;
+    expect(chargeDistance(midT, min, max, time, exp, false)).toBeCloseTo(formula, 6);
+    expect(chargeDistance(time, min, max, time, exp, true)).toBeCloseTo(max, 6);
+    expect(chargeDistance(time * 2, min, max, time, exp, true)).toBeCloseTo(min, 6);
+
+    const chargeSettings = { ...DEFAULTS, aimMode: 'directionCharge' as const };
     const state = createAimState();
-    const stick = { x: 0.18, y: 0.94 };
     let now = 0;
-    let aimed = { x: 0, y: 12 };
-    for (let i = 0; i < 90; i++) {
-      now += DT;
-      aimed = stepAim(state, stick, DT, DEFAULTS, now);
-    }
-
-    const springFrames = 8;
-    let thrown = aimed;
-    let worst = 0;
-    for (let i = 0; i < springFrames + 12; i++) {
-      now += DT;
-      const k = i < springFrames ? 1 - (i + 1) / springFrames : 0;
-      const off = stepAim(state, { x: stick.x * k, y: stick.y * k }, DT, DEFAULTS, now);
-      worst = Math.max(worst, dist(off, aimed));
-      if (k === 0) thrown = off;
-    }
-    console.log(
-      `aim spring held=(${aimed.x.toFixed(2)}, ${aimed.y.toFixed(2)}) ` +
-        `throw=(${thrown.x.toFixed(2)}, ${thrown.y.toFixed(2)}) ` +
-        `error=${dist(thrown, aimed).toFixed(3)} yd worst=${worst.toFixed(3)} yd`,
-    );
-    expect(dist(thrown, aimed)).toBeLessThan(1.5);
-    expect(Math.hypot(thrown.x, thrown.y)).toBeGreaterThan(8);
-    expect(worst).toBeLessThan(1.5);
-
-    // One-frame stick drop, the same frame a throw would read.
-    const drop = createAimState();
-    now = 0;
-    let settled = { x: 0, y: 12 };
-    for (let i = 0; i < 90; i++) {
-      now += DT;
-      settled = stepAim(drop, stick, DT, DEFAULTS, now);
-    }
     now += DT;
-    const onRelease = stepAim(drop, { x: 0, y: 0 }, DT, DEFAULTS, now);
-    expect(dist(onRelease, settled)).toBeLessThan(0.75);
-
-    // After the hold, ease toward the rest offset. No one-frame snap onto the QB.
-    let prev = thrown;
-    let maxStep = 0;
-    const after = now + DEFAULTS.aimReturnHold + 1.2;
-    while (now < after) {
-      now += DT;
-      const off = stepAim(state, { x: 0, y: 0 }, DT, DEFAULTS, now);
-      maxStep = Math.max(maxStep, dist(off, prev));
-      prev = off;
+    stepAim(state, sample({ x: 0, y: 1 }), DT, chargeSettings, now);
+    let elapsed = 0;
+    let dist = 0;
+    while (elapsed < midT - 1e-9) {
+      const h = Math.min(DT, midT - elapsed);
+      elapsed += h;
+      now += h;
+      dist = stepAim(state, sample({ x: 0, y: 1 }, { charging: true, pressure: 0.4 }), h, chargeSettings, now).dist;
     }
-    expect(maxStep).toBeLessThan(2);
-    expect(dist(prev, aimed)).toBeGreaterThan(1);
-    expect(dist(prev, { x: 0, y: 12 })).toBeLessThan(dist(aimed, { x: 0, y: 12 }));
+    console.log(`direction charge t=${elapsed.toFixed(3)} d=${dist.toFixed(3)} formula=${formula.toFixed(3)}`);
+    expect(dist).toBeCloseTo(formula, 4);
+
+    const cancelled = stepAim(state, sample({ x: 0, y: 1 }, { charging: true, pressure: 0.4, cancel: true }), DT, chargeSettings, now + DT);
+    expect(cancelled.suppressThrow).toBe(true);
+    expect(cancelled.dist).toBeCloseTo(min, 6);
+    const still = stepAim(state, sample({ x: 0, y: 1 }, { charging: true, pressure: 0.4 }), DT, chargeSettings, now + DT * 2);
+    expect(still.suppressThrow).toBe(false);
+    expect(still.dist).toBeCloseTo(min, 6);
   });
 
-  it('gives a small stick less than a linear share of the range', () => {
-    const state = createAimState();
-    let now = 0;
-    let off = { x: 0, y: 12 };
-    const stick = { x: 0, y: 0.3 };
-    for (let i = 0; i < 180; i++) {
-      now += DT;
-      off = stepAim(state, stick, DT, DEFAULTS, now);
-    }
-    const linear = instantAim(stick);
-    expect(Math.hypot(off.x, off.y)).toBeLessThan(Math.hypot(linear.x, linear.y) * 0.55);
-  });
-
-  it('follows a new deflection during the return hold', () => {
-    const state = createAimState();
-    const stick = { x: 0.18, y: 0.94 };
-    let now = 0;
-    let aimed = { x: 0, y: 12 };
-    for (let i = 0; i < 90; i++) {
-      now += DT;
-      aimed = stepAim(state, stick, DT, DEFAULTS, now);
-    }
-    now += DT;
-    const held = stepAim(state, { x: 0, y: 0 }, DT, DEFAULTS, now);
-    expect(dist(held, aimed)).toBeLessThan(0.75);
-    let off = held;
-    for (let i = 0; i < 45; i++) {
-      now += DT;
-      off = stepAim(state, { x: -0.85, y: 0.35 }, DT, DEFAULTS, now);
-    }
-    expect(dist(off, held)).toBeGreaterThan(4);
+  it('preview arc ends on the sim landing', () => {
+    const sim = createSim({ ...DEFAULTS });
+    sim.setMode('throw');
+    const qb = sim.state.players.qb;
+    const tgt = { x: qb.x + 4, y: qb.y + 42 };
+    const preview = sim.previewThrow(0.5, tgt);
+    const end = preview.arc[preview.arc.length - 1];
+    sim.doThrow(tgt, 0.5, false);
+    const land = sim.state.ball.landing;
+    expect(land).toBeTruthy();
+    const err = Math.hypot(end.x - land!.x, end.y - land!.y);
+    const drawn = resampleArc(preview.arc, 32);
+    const drawErr = Math.hypot(drawn[drawn.length - 1].x - land!.x, drawn[drawn.length - 1].y - land!.y);
+    console.log(`arc endpoint error=${err.toFixed(4)} yd resampled=${drawErr.toFixed(4)} yd segments=${drawn.length - 1}`);
+    expect(err).toBeLessThan(0.1);
+    expect(drawErr).toBeLessThan(0.1);
+    expect(drawn.length).toBe(33);
   });
 });

@@ -9,7 +9,7 @@ import { MODE_LABEL, MP_MODE_IDS, nextMode, type ModeId } from './modes';
 import { clamp, rad } from './sim/math';
 import { createSim } from './sim/sim';
 import type { SimInput } from './sim/types';
-import { createAimState, stepAim } from './input/aim';
+import { AIM_MODE_LABEL, aimModeOf, createAimState, nextAimMode, resampleArc, stepAim } from './input/aim';
 import { createInput } from './input/input';
 import type { PolledInput } from './input/input';
 import { createCanvasRenderer } from './render/canvas2d/renderer';
@@ -66,6 +66,9 @@ viewEl.addEventListener('wheel', (e) => {
 
 const input = createInput(S, viewEl);
 const aimState = createAimState();
+let shownAim = aimModeOf(S.aimMode);
+let aimHint = '';
+let aimHintUntil = 0;
 const cam = { x: FIELD_W / 2, y: LOS_Y + 3, ext: DEFAULTS.cameraMinExtent, lookX: FIELD_W / 2, lookY: LOS_Y + 14, dist: 110 };
 let acc = 0;
 let last = performance.now();
@@ -150,23 +153,43 @@ function frame(now: number) {
     if (session.role === 'host' && (session.phase === 'lobby' || session.phase === 'play')) session.pushSettings();
   }
   if (meta.posePreview) sandbox.posePreview = !sandbox.posePreview;
+  if (meta.cycleAim) {
+    S.aimMode = nextAimMode(aimModeOf(S.aimMode));
+    saveSettings(browserStore(), S);
+    panel.refresh();
+  }
+  if (aimModeOf(S.aimMode) !== shownAim) {
+    shownAim = aimModeOf(S.aimMode);
+    aimHint = AIM_MODE_LABEL[shownAim];
+    aimHintUntil = performance.now() + 2000;
+  }
 
   const thrower = localThrower();
   let reticle: { x: number; y: number } | null = null;
+  let aimGuide: { x: number; y: number; x2: number; y2: number } | null = null;
+  let previewLoft = S.previewDefaultLoft;
+  let previewPoint: { x: number; y: number } | null = null;
   if (thrower) {
-    let a: { x: number; y: number };
-    if (inp.aimSpec.mode === 'mouse') {
-      const w = renderer.screenToField(inp.aimSpec.x, inp.aimSpec.y);
-      a = w || { x: thrower.x, y: thrower.y + 12 };
-    } else {
-      // Real dt, before the throw reads inp.aim, so a spring-back cannot yank the pass.
-      const off = stepAim(aimState, inp.aimStick, dt, S, now / 1000);
-      a = { x: thrower.x + off.x, y: thrower.y + off.y };
+    const mouse = inp.aimSpec.mode === 'mouse' ? renderer.screenToField(inp.aimSpec.x, inp.aimSpec.y) : null;
+    const aimed = stepAim(aimState, {
+      stick: inp.aimSpec.mode === 'stick' ? inp.aimStick : null,
+      mouse,
+      qb: thrower,
+      charging: inp.charge !== null,
+      pressure: inp.charge,
+      cancel: !!inp.b,
+    }, dt, S, now / 1000);
+    if (aimed.suppressThrow) {
+      inp.throwPower = null;
+      inp.charge = null;
     }
-    const dx = a.x - thrower.x, dy = a.y - thrower.y, d = Math.hypot(dx, dy);
-    if (d > S.maxAimRange) a = { x: thrower.x + dx / d * S.maxAimRange, y: thrower.y + dy / d * S.maxAimRange };
-    inp.aim = a;
-    if (st.ball.holder === thrower.id) reticle = a;
+    inp.aim = { x: aimed.x, y: aimed.y };
+    if (st.ball.holder === thrower.id) {
+      reticle = inp.aim;
+      aimGuide = aimed.guide;
+      previewLoft = aimed.previewLoft;
+      previewPoint = { x: aimed.previewX, y: aimed.previewY };
+    }
   }
   if (window.__netInput) Object.assign(inp, window.__netInput);
   if (!reticle && st.ball.state === 'air' && st.ball.aimed) reticle = st.ball.aimed;
@@ -247,7 +270,13 @@ function frame(now: number) {
 
   const qb = st.players.qb;
   let preview = null;
-  if (thrower && st.ball.holder === thrower.id && inp.charge !== null && reticle) preview = sim.previewThrow(inp.charge, reticle).arc;
+  let previewRing: { x: number; y: number; r: number } | null = null;
+  if (previewPoint) {
+    const arc = sim.previewThrow(previewLoft, previewPoint).arc;
+    const end = arc[arc.length - 1];
+    preview = resampleArc(arc, 32);
+    if (end) previewRing = { x: end.x, y: end.y, r: S.catchReach };
+  }
   for (const p of Object.values(st.players)) {
     const h = sim.handPos(p);
     p.handX = h.x;
@@ -263,6 +292,9 @@ function frame(now: number) {
     },
     reticle,
     preview,
+    previewLoft,
+    previewRing,
+    aimGuide,
     route,
     showReach: S.showReach,
     showArc: S.showArc,
@@ -271,7 +303,10 @@ function frame(now: number) {
   };
   renderer.sync(st, viewState);
   renderer.render();
-  updateHud({ st, S, inp, input, rendererName: renderer.name, stats: hud.stats, fb: hud.fb, pad: hud.pad, power: hud.power, prompt: promptEl });
+  updateHud({
+    st, S, inp, input, rendererName: renderer.name, stats: hud.stats, fb: hud.fb, pad: hud.pad, power: hud.power, prompt: promptEl,
+    aimHint: performance.now() < aimHintUntil ? aimHint : null,
+  });
   updateFloaters({ st, renderer, poseSheet: !!viewState.poseSheet, floatEl });
   lobby.paintStats();
   requestAnimationFrame(frame);

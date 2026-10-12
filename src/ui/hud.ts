@@ -33,6 +33,7 @@ export function updateHud(opts: {
   pad: HTMLElement;
   power: HTMLElement;
   prompt: HTMLElement;
+  aimHint?: string | null;
 }) {
   const { st, S, inp, input, rendererName, stats, fb, pad, power, prompt } = opts;
   const me = st.players[st.controlled] ?? Object.values(st.players)[0];
@@ -152,6 +153,7 @@ export function updateHud(opts: {
     <div class="row"><span>Input</span><b>${input.padConnected ? 'gamepad ✓' : 'kb+mouse'} · ${rendererName}</b></div>
     ${time}`;
   }
+  if (opts.aimHint) stats.insertAdjacentHTML('beforeend', `<div class="row" id="aim-mode"><span>Aim</span><b>${opts.aimHint}</b></div>`);
   const preSnap = S.requireSnap && ((st.mode !== 'catch' && st.play.phase === 'pre') || (st.mode === 'catch' && !!st.cm && st.cm.phase === 'wait' && !S.catchPaused && !S.catchAIReceiver && st.t >= st.cm.readyT));
   prompt.style.display = preSnap ? 'block' : 'none';
   if (preSnap) prompt.textContent = input.padConnected ? 'Press A to snap' : 'Press Space (A) to snap';

@@ -45,7 +45,7 @@ The controls card is a small overlay. The first visit shows it; after that it st
 | Left stick | Move. Partial tilt jogs, full tilt runs. |
 | L3 (click) | Sprint pump. Each click adds speed, it holds, then fades. Cuts and easing off fade it faster. |
 | LT | Square up / slow down (two-hand catch, or a defender breaking down). |
-| Right stick | QB aim spot. The reticle eases after the stick and holds the spot when the stick springs back, so releasing the throw keeps that target. On a run, a flick is a move (sidestep, truck, spin, juke) relative to your heading. A defender lunges in that world direction: forward and at speed goes farthest, sideways is shorter, and backward is a short weak step. |
+| Right stick | QB aim, field-relative (up the stick is upfield, on every camera). **K** switches Absolute+ and Direction charge. Absolute+ uses the stick angle for direction and the push for distance. Direction charge uses the stick for the line only; RT slides a marker along it and B cancels. Letting the stick spring back keeps the spot for a short grace. On a run, a flick is a move (sidestep, truck, spin, juke) relative to your heading. A defender lunges in that world direction: forward and at speed goes farthest, sideways is shorter, and backward is a short weak step. |
 | RT | QB: throw (soft = loft, hard = bullet). Receiver: one-hand catch. |
 | A | Pre-snap: snap the ball. Live: jump. A defender uses the same jump as a receiver. The ball carrier hurdles. |
 | Y | Receiver: timed catch. Before the throw: call for the ball. Defender in Coverage: interception if the ball is in the air, otherwise a punch. |
@@ -64,7 +64,7 @@ The controls card is a small overlay. The first visit shows it; after that it st
 | WASD | Move. Hold C for a jog. |
 | Shift (tap) | Sprint pump (same as L3). |
 | Q | Square up (LT). |
-| Mouse | QB aim spot. Wheel zooms. |
+| Mouse | QB aim. In Direction charge the cursor picks the line and the left button charges the distance. Wheel zooms. |
 | Hold left mouse or F | Throw power. Release to throw. |
 | E / F | Receiver: catch / one-hand. E before the throw calls for the ball. |
 | V / Space | Plant (hold V to stretch). Space is jump, or snap before the play. |

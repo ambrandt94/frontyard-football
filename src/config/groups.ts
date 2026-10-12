@@ -6,7 +6,10 @@ export const LOCAL_KEYS = [
   'camStyle', 'camPitch', 'camFov', 'camHeightBias', 'camUpfieldBias',
   'playerScale', 'playerVisuals', 'modelHeightYd', 'modelOutline',
   'showReach', 'showArc', 'renderer', 'deadzone',
-  'aimResponse', 'aimCurve', 'aimDeadzone', 'aimReturnHold', 'aimMaxSpeed',
+  'aimMode', 'aimDeadzone', 'aimMinDist', 'aimMaxDist', 'aimDistExp',
+  'aimEuroMin', 'aimEuroBeta', 'aimAngleDeadband', 'aimGraceMs',
+  'chargeMinDist', 'chargeMaxDist', 'chargeTime', 'chargeExp', 'chargePingPong',
+  'previewDefaultLoft',
   'netTurnUrl', 'netTurnUser', 'netTurnCred',
 ] as const satisfies readonly (keyof Settings)[];
 

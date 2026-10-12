@@ -24,6 +24,11 @@ export interface ViewState {
   };
   reticle: { x: number; y: number } | null;
   preview: { x: number; y: number; z?: number }[] | null;
+  /** 0 is a loft (blue), 1 is a bullet (orange). */
+  previewLoft: number;
+  previewRing: { x: number; y: number; r: number } | null;
+  /** Direction-charge line, in field yards. */
+  aimGuide: { x: number; y: number; x2: number; y2: number } | null;
   route: { x: number; y: number; z?: number }[] | null;
   showReach: boolean;
   showArc: boolean;

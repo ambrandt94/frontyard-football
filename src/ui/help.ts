@@ -52,12 +52,12 @@ const BODY = [
     row(`${BACK} ${key('Tab')}`, 'Switch the player you control.'),
     row(`${START} ${key('R')}`, 'Reset the play. In Catch, Start pauses throws. Hold Start, or Back+Start, to hide this card.'),
     row(`${key('H')} ${key('G')}`, 'Hide this card. G hides the settings panel. ` shows the net readout.'),
-    row(`${key('N')} ${key('M')}`, 'Next mode (D-pad up). M swaps 3D and the flat field. The 3D view starts as an All-22 angle. Wheel zooms.'),
+    row(`${key('N')} ${key('M')} ${key('K')}`, 'Next mode (D-pad up). M swaps 3D and the flat field. K cycles QB aim. The 3D view starts as an All-22 angle. Wheel zooms.'),
     row(`${key('T')}`, 'Slow motion. Cycles 0.5×, 0.25×, and full speed.'),
   ].join('')),
   section('qb', 'Quarterback', [
-    row(`${RS} ${key('Mouse')}`, 'Aim the spot. The reticle eases after the stick and holds when you let go. Hold the throw, then let go.'),
-    row(`${RT} ${key('F')}`, 'Throw. Soft is a loft, hard is a bullet.'),
+    row(`${RS} ${key('Mouse')} ${key('K')}`, 'Aim. K switches Absolute+ (angle and distance) and Direction charge (the stick picks the line, RT slides the distance). B cancels a charge. The arc is up before the throw.'),
+    row(`${RT} ${key('F')}`, 'Throw. Soft is a loft, hard is a bullet. On a charge, let go to throw that distance.'),
     row(`${LB} ${RB} ×2`, `Pitch left or right. Flick ${RS} to aim it.`),
   ].join('')),
   section('receiver', 'Receiver', [

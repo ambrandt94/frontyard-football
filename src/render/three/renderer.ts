@@ -61,6 +61,9 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
   let ballShadow: THREE.Mesh = null!;
   let arc: LineHandle = null!;
   let preview: LineHandle = null!;
+  let ribbon: THREE.Mesh = null!;
+  let previewRing: THREE.Mesh = null!;
+  let guide: LineHandle = null!;
   let route: LineHandle = null!;
   let reticle: THREE.Group = null!;
   let landing: THREE.Mesh = null!;
@@ -145,6 +148,97 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
       },
       show(v) { line.visible = pts.visible = v; },
     };
+  }
+
+  const loftBlue = new THREE.Color(0x42a5f5);
+  const bulletOrange = new THREE.Color(0xff7043);
+  const loftMix = new THREE.Color();
+
+  function makeRibbon(): THREE.Mesh {
+    const segments = 32;
+    const verts = (segments + 1) * 2;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts * 3), 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(verts * 3), 3));
+    geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(verts * 2), 2));
+    const index = new Uint16Array(segments * 6);
+    for (let i = 0; i < segments; i++) {
+      const a = i * 2;
+      const o = i * 6;
+      index[o] = a;
+      index[o + 1] = a + 1;
+      index[o + 2] = a + 2;
+      index[o + 3] = a + 1;
+      index[o + 4] = a + 3;
+      index[o + 5] = a + 2;
+    }
+    geo.setIndex(new THREE.BufferAttribute(index, 1));
+    geo.setDrawRange(0, 0);
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 2;
+    const g = canvas.getContext('2d');
+    if (g) {
+      const grad = g.createLinearGradient(0, 0, 64, 0);
+      grad.addColorStop(0, 'rgba(255,255,255,0.95)');
+      grad.addColorStop(1, 'rgba(255,255,255,0.04)');
+      g.fillStyle = grad;
+      g.fillRect(0, 0, 64, 2);
+    }
+    const map = new THREE.CanvasTexture(canvas);
+    const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+      map, vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+    }));
+    mesh.frustumCulled = false;
+    mesh.visible = false;
+    return mesh;
+  }
+
+  function updateRibbon(points: { x: number; y: number; z?: number }[], loft: number) {
+    const geo = ribbon.geometry as THREE.BufferGeometry;
+    const pos = geo.attributes.position as THREE.BufferAttribute;
+    const col = geo.attributes.color as THREE.BufferAttribute;
+    const uv = geo.attributes.uv as THREE.BufferAttribute;
+    const pa = pos.array as Float32Array;
+    const ca = col.array as Float32Array;
+    const ua = uv.array as Float32Array;
+    const n = Math.min(points.length, 33);
+    loftMix.copy(loftBlue).lerp(bulletOrange, Math.max(0, Math.min(1, loft)));
+    for (let i = 0; i < n; i++) {
+      const p = points[Math.min(points.length - 1, Math.round(i * (points.length - 1) / Math.max(1, n - 1)))];
+      const q = points[Math.min(points.length - 1, Math.round((i + 1) * (points.length - 1) / Math.max(1, n - 1)))];
+      let tx = q.x - p.x;
+      let tz = -(q.y - p.y);
+      if (i === n - 1 && i > 0) {
+        const prev = points[Math.min(points.length - 1, Math.round((i - 1) * (points.length - 1) / Math.max(1, n - 1)))];
+        tx = p.x - prev.x;
+        tz = -(p.y - prev.y);
+      }
+      const len = Math.hypot(tx, tz) || 1;
+      const t = n <= 1 ? 0 : i / (n - 1);
+      const w = 0.55 * (1 - t * 0.9);
+      const px = (-tz / len) * w;
+      const pz = (tx / len) * w;
+      const y = (p.z || 0) + 0.12;
+      const o = i * 2;
+      pa[(o) * 3] = p.x + px;
+      pa[(o) * 3 + 1] = y;
+      pa[(o) * 3 + 2] = -p.y + pz;
+      pa[(o + 1) * 3] = p.x - px;
+      pa[(o + 1) * 3 + 1] = y;
+      pa[(o + 1) * 3 + 2] = -p.y - pz;
+      for (const k of [o, o + 1]) {
+        ca[k * 3] = loftMix.r;
+        ca[k * 3 + 1] = loftMix.g;
+        ca[k * 3 + 2] = loftMix.b;
+        ua[k * 2] = t;
+        ua[k * 2 + 1] = k === o ? 0 : 1;
+      }
+    }
+    geo.setDrawRange(0, Math.max(0, n - 1) * 6);
+    pos.needsUpdate = true;
+    col.needsUpdate = true;
+    uv.needsUpdate = true;
   }
 
   function syncSheet(view: ViewState) {
@@ -266,6 +360,10 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
       scene.add(ballShadow);
       arc = makeLine(0xfff59d, 512, 0.9);
       preview = makeLine(0x80deea, 512, 0.75);
+      preview.show(false);
+      ribbon = makeRibbon();
+      scene.add(ribbon);
+      guide = makeLine(0xffffff, 2, 0.35);
       route = makeLine(0xffffff, 16, 0.35);
       const mk = (geo: THREE.BufferGeometry, color: number, op = 0.95) => {
         const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: op, depthWrite: false, side: THREE.DoubleSide }));
@@ -283,6 +381,9 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
       scene.add(reticle);
       landing = mk(new THREE.RingGeometry(0.5, 0.75, 32), 0xff7043);
       landing.frustumCulled = false;
+      previewRing = mk(new THREE.RingGeometry(0.82, 1, 40), 0x42a5f5);
+      previewRing.frustumCulled = false;
+      previewRing.visible = false;
       cue = mk(new THREE.RingGeometry(0.88, 1.0, 48), 0xffeb3b);
       api.resize();
     },
@@ -390,8 +491,18 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
       if (inAir) arc.set(b.arc, 2);
       landing.visible = inAir && !!b.landing;
       if (b.landing) landing.position.set(b.landing.x, 0.05, -b.landing.y);
-      preview.show(!!view.preview);
-      if (view.preview) preview.set(view.preview, 2);
+      const showPreview = !!view.preview && view.preview.length > 1;
+      ribbon.visible = showPreview;
+      if (showPreview && view.preview) updateRibbon(view.preview, view.previewLoft || 0);
+      previewRing.visible = !!view.previewRing;
+      if (view.previewRing) {
+        previewRing.position.set(view.previewRing.x, 0.07, -view.previewRing.y);
+        previewRing.scale.setScalar(Math.max(0.2, view.previewRing.r));
+        loftMix.copy(loftBlue).lerp(bulletOrange, Math.max(0, Math.min(1, view.previewLoft || 0)));
+        basic(previewRing).color.copy(loftMix);
+      }
+      guide.show(!!view.aimGuide);
+      if (view.aimGuide) guide.set([{ x: view.aimGuide.x, y: view.aimGuide.y }, { x: view.aimGuide.x2, y: view.aimGuide.y2 }], 1);
       reticle.visible = !!view.reticle;
       if (view.reticle) reticle.position.set(view.reticle.x, 0.06, -view.reticle.y);
       route.show(!!view.route);
