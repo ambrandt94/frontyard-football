@@ -21,8 +21,10 @@ import { bindSliderBands } from './sliderBands';
 import { timeScaleOf } from '../config/timeScale';
 import { applyControlPreset, builtinPreset, BUILTIN_PRESETS } from '../config/presets';
 import { MODE_LABEL, MODE_LABELS, modeFromLabel, MP_MODE_IDS, type ModeId } from '../modes';
+import type { Look } from '../sim/look';
 import type { Sim } from '../sim/sim';
 import type { FieldRenderer } from '../render/types';
+import { mountLookEditor } from './lookEditor';
 
 export interface SandboxUi {
   posePreview: boolean;
@@ -62,6 +64,7 @@ export function createPanel(opts: {
   roomPhase?: () => 'idle' | 'lobby' | 'play' | 'ended';
   onHostSettings?: () => void;
   onLobbyMode?: (mode: ModeId) => void;
+  onLook?: (look: Look) => void;
 }) {
   const { S, sim } = opts;
   const st = sim.state;
@@ -195,11 +198,15 @@ export function createPanel(opts: {
       sandbox.mode = MODE_LABEL[st.mode];
       return;
     }
+    if (phase === 'lobby' || phase === 'play') {
+      opts.onLobbyMode?.(m);
+      sandbox.mode = MODE_LABEL[m];
+      sandbox.controlling = st.controlled.toUpperCase();
+      return;
+    }
     sim.setMode(m);
     sandbox.mode = MODE_LABEL[m];
     sandbox.controlling = st.controlled.toUpperCase();
-    if (phase === 'lobby') opts.onLobbyMode?.(m);
-    else if (phase === 'play') opts.onHostSettings?.();
   }
 
   const extraHost: { disable(): void; enable(): void }[] = [];
@@ -217,6 +224,11 @@ export function createPanel(opts: {
   };
 
   const gui = new GUI({ title: 'Sandbox settings' });
+  const fplayer = gui.addFolder('Player');
+  const lookHolder = document.createElement('div');
+  lookHolder.className = 'look-panel';
+  (fplayer as unknown as { $children: HTMLElement }).$children.appendChild(lookHolder);
+  mountLookEditor(lookHolder, { onChange: (look) => opts.onLook?.(look) });
   const fp = gui.addFolder('Play');
   fp.add(S, 'timeScale', 0.1, 2, 0.05).name('Time scale (T)').listen();
   extraHost.push(fp.add(clocks, 'quarter').name('0.25×'));

@@ -1,4 +1,5 @@
 import type { ModeId } from '../modes';
+import type { Look } from './look';
 
 export interface Vec2 {
   x: number;
@@ -94,6 +95,8 @@ export interface Player {
   name?: string;
   /** Ring color for that net player. Role color is used when this is absent. */
   tint?: number;
+  /** Jersey, pants, helmet, and skin. Humans send theirs; CPU bodies get a team kit. */
+  look?: Look;
   x: number;
   y: number;
   vx: number;

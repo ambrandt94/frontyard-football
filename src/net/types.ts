@@ -1,5 +1,6 @@
 import type { Settings } from '../config/defaults';
 import type { ModeId } from '../modes';
+import type { Look } from '../sim/look';
 import type { ArcPoint, Vec2 } from '../sim/types';
 
 /** Wire format for one tick of a player's controller. Triggers are 0..1. throwPower is -1 when not thrown. */
@@ -83,14 +84,22 @@ export interface Seat {
   slot: string;
   ping: number;
   host: boolean;
+  look: Look;
+}
+
+export interface RosterName {
+  name: string;
+  tint: number;
+  look: Look;
 }
 
 export interface NetMsgMap {
-  hello: { t: 'hello'; name: string };
-  welcome: { t: 'welcome'; you: string; room: string; players: Seat[]; mode: ModeId; inMatch: boolean; settings: Partial<Settings>; freeCount: number };
-  lobby: { t: 'lobby'; players: Seat[]; mode: ModeId; freeCount: number };
+  hello: { t: 'hello'; name: string; look?: Look };
+  welcome: { t: 'welcome'; you: string; room: string; players: Seat[]; mode: ModeId; inMatch: boolean; settings: Partial<Settings>; freeCount: number; v: number };
+  lobby: { t: 'lobby'; v: number; players: Seat[]; mode: ModeId; freeCount: number };
   claim: { t: 'claim'; slot: string };
-  start: { t: 'start'; mode: ModeId; seed: number; slots: Record<string, string>; settings: Partial<Settings>; freeCount: number; names: Record<string, { name: string; tint: number }> };
+  look: { t: 'look'; look: Look };
+  start: { t: 'start'; v: number; mode: ModeId; seed: number; slots: Record<string, string>; settings: Partial<Settings>; freeCount: number; names: Record<string, RosterName> };
   input: { t: 'input'; frame: InputFrame };
   snap: { t: 'snap'; snap: Snapshot };
   ping: { t: 'ping'; n: number };

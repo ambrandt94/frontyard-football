@@ -7,6 +7,7 @@ import { CAM_FOV, FIELD_W, LOS_Y, ROUTES, STEP } from './config/constants';
 import { fitAngledCamera, rigAzimuth, type FramePoint } from './render/camera';
 import { MODE_LABEL, MP_MODE_IDS, nextMode, type ModeId } from './modes';
 import { clamp, rad } from './sim/math';
+import { aiLook, loadLook } from './sim/look';
 import { createSim } from './sim/sim';
 import { freshThrowArm, stepThrowArm, throwTune } from './sim/throwArm';
 import type { SimInput, ThrowPhase, Vec2 } from './sim/types';
@@ -55,6 +56,7 @@ const panel = createPanel({
   roomPhase: () => session?.phase ?? 'idle',
   onHostSettings: () => session?.pushSettings(),
   onLobbyMode: (m) => session?.setMode(m),
+  onLook: (look) => session?.setLook(look),
 });
 const { gui, sandbox } = panel;
 
@@ -141,6 +143,20 @@ const promptEl = must('prompt');
 const floatEl = must('floaters');
 let viewState: ViewState | null = null;
 let carry: PolledInput | null = null;
+
+function paintLocalBodies() {
+  const mine = loadLook();
+  const jerseys = [mine.jersey];
+  for (const p of Object.values(st.players)) {
+    if (p.id === st.controlled) {
+      p.look = { ...mine };
+      p.tint = mine.jersey;
+    } else {
+      delete p.tint;
+      p.look = aiLook(p.role, jerseys);
+    }
+  }
+}
 
 function must(id: string): HTMLElement {
   const el = document.getElementById(id);
@@ -267,6 +283,7 @@ function frame(now: number) {
       acc -= STEP;
     }
     if (first) carry = inp;
+    paintLocalBodies();
   } else {
     acc = 0;
     carry = null;

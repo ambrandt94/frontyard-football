@@ -4,6 +4,7 @@ import { CAM_FOV, FIELD_L, FIELD_W, LOS_Y } from '../../config/constants';
 import { clamp } from '../../sim/math';
 import { angledPose } from '../camera';
 import type { Player } from '../../sim/types';
+import { aiLook } from '../../sim/look';
 import { PLAYER_COLORS } from '../colors';
 import { makeFieldCanvas } from '../field';
 import type { FieldRenderer, ViewState } from '../types';
@@ -22,10 +23,10 @@ interface PlayerView {
   armL: THREE.Mesh;
   armR: THREE.Mesh;
   mat: THREE.MeshStandardMaterial;
+  helmetMat: THREE.MeshStandardMaterial;
   callHand: THREE.Mesh;
   callArm: THREE.Mesh;
   model: ModelInstance | null;
-  modelRole: string | null;
 }
 
 interface LineHandle {
@@ -87,7 +88,8 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
     const cap = new THREE.Mesh(new THREE.CapsuleGeometry(0.42, 1.0, 6, 16), mat);
     cap.position.y = 0.92;
     capG.add(cap);
-    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.34, 16, 12), new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.3 }));
+    const helmetMat = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.3 });
+    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.34, 16, 12), helmetMat);
     helmet.position.y = 1.85;
     capG.add(helmet);
     const shoulders = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.28, 1.25), mat);
@@ -126,7 +128,7 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
     callArm.position.set(0, 2.25, 0.4);
     body.add(callArm);
     scene.add(g, shadow, sel, reach);
-    return { g, body, capG, team, shadow, sel, reach, armL, armR, mat, callHand, callArm, model: null, modelRole: null };
+    return { g, body, capG, team, shadow, sel, reach, armL, armR, mat, helmetMat, callHand, callArm, model: null };
   }
 
   function makeLine(color: number, n = 512, opacity = 1): LineHandle {
@@ -251,7 +253,8 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
     if (!sheet && on) {
       sheet = SHEET_POSES.map(([, role]) => {
         const v = makePlayer(PLAYER_COLORS[role] || 0xcccccc);
-        v.model = makeModelInstance(role, S);
+        v.model = makeModelInstance(S);
+        v.model.applyLook(aiLook(role, []));
         v.body.add(v.model.holder);
         v.capG.visible = false;
         [v.armL, v.armR, v.callHand, v.callArm, v.sel, v.reach].forEach((m) => { m.visible = false; });
@@ -282,7 +285,7 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
       v.body.position.y = lying * 0.45;
       v.shadow.position.set(x, 0.02, -y);
       v.team.position.set(x, 0.025, -y);
-      basic(v.team).color.setHex(PLAYER_COLORS[role] || 0xcccccc);
+      basic(v.team).color.setHex(aiLook(role, []).jersey);
       v.model.ol.visible = S.modelOutline;
       poseModel(v.model, p, { t: 0, ball: { holder: null, state: 'held', throwT: 0 }, mode: 'sheet' }, view);
       sheetLabelList.push({ text: name, x, y: y - 1.6 });
@@ -444,14 +447,15 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
         v.armL.visible = p.stiffArm === 'L';
         v.armR.visible = p.stiffArm === 'R';
         v.callHand.visible = v.callArm.visible = p.callT != null && st.t - p.callT < 0.9;
-        const wantRole = p.role === 'DF' ? 'DF' : 'O';
-        if (useModel && (!v.model || v.modelRole !== wantRole)) {
-          if (v.model) v.body.remove(v.model.holder);
-          v.model = makeModelInstance(p.role, S);
-          v.modelRole = wantRole;
+        const look = p.look ?? aiLook(p.role, []);
+        if (useModel && !v.model) {
+          v.model = makeModelInstance(S);
           v.body.add(v.model.holder);
         }
-        if (v.model) v.model.holder.visible = useModel;
+        if (v.model) {
+          v.model.holder.visible = useModel;
+          v.model.applyLook(look);
+        }
         v.capG.visible = !useModel;
         if (useModel && v.model) {
           v.armL.visible = v.armR.visible = v.callHand.visible = v.callArm.visible = false;
@@ -460,8 +464,10 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
         }
         v.team.visible = !view.poseSheet;
         v.team.position.set(p.x, 0.025, -p.y);
-        basic(v.team).color.setHex(p.tint ?? PLAYER_COLORS[p.role] ?? 0xcccccc);
-        v.mat.color.setHex(PLAYER_COLORS[p.role] || 0xcccccc);
+        const jersey = look.jersey;
+        basic(v.team).color.setHex(p.tint ?? jersey);
+        v.mat.color.setHex(jersey);
+        v.helmetMat.color.setHex(look.helmet);
         v.team.scale.setScalar(S.playerScale);
         v.g.scale.setScalar(S.playerScale);
         v.shadow.scale.setScalar(S.playerScale);

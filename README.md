@@ -143,7 +143,7 @@ public/assets/             player.glb, base color, ORM map
 
 The sim steps at a fixed `1/120` second. Random rolls go through an injectable RNG (`src/sim/rng.ts`); the browser uses `Math.random`, tests use a seeded generator. Online play reuses that sim on the host.
 
-The player is a 24-bone humanoid with a walk clip. Poses (throw, catch, sprint, truck, and the rest) are a table of bone offsets blended on top of that clip. If the model cannot load, players fall back to capsules. Team defense recolors the navy texels maroon.
+The player is a 24-bone humanoid with a walk clip. Poses (throw, catch, sprint, truck, and the rest) are a table of bone offsets blended on top of that clip. If the model cannot load, players fall back to capsules. Jersey, pants, helmet, and skin are recolored from a mask of the base texture, keeping the shading and the jersey number. The Player folder and the online lobby both edit that kit. Offline, CPU players wear team colors and defense stays maroon unless it would match you. Capsules use the jersey color.
 
 ## GitHub Pages
 
@@ -155,7 +155,11 @@ Pushes to `main` run `.github/workflows/pages.yml`, the only workflow in this re
 
 Click **Online**. **Host game** makes a 4-character room code and a link like `https://ambrandt94.github.io/frontyard-football/?room=CODE`. Send either one. **Join** types the code. A `?room=` link joins by itself, using the name saved in the browser or “Guest”.
 
-The host picks the mode and hits **Start**. Each person picks a slot. Empty slots are AI. Throw and Coverage have quarterback, receiver, and defender. 1v1 Run has carrier and defender. Throw Around puts everyone on the field (2–6) and whoever has the ball can throw it. Catch mode stays single-player. Snap is **A** from the host or the quarterback (or the carrier in 1v1). Names sit over the players, with a colored ring per person. `` ` `` or **Net** shows ping and snapshot rate.
+The host picks the mode and hits **Start**. Each person picks a slot. Empty slots are AI. Throw and Coverage have quarterback, receiver, and defender. 1v1 Run has carrier and defender. Throw Around puts everyone on the field (2–6) and whoever has the ball can throw it. Catch mode stays single-player. Snap is **A** from the host or the quarterback (or the carrier in 1v1).
+
+Changing mode is the host's job. The host keeps each person on the same kind of role when the new mode has one, and fills the rest with CPU. Everyone rebuilds from that roster, so names stay on the right people. The roster is sent again when someone joins, when they reconnect, and every couple of seconds, with a version so a late copy can't roll it back. Name tags and the colored rings are drawn from that roster every frame. A small strip of names and colors sits in the corner during a match and can be collapsed. `` ` `` or **Net** still toggles ping and snapshot rate.
+
+Jersey, pants, helmet, and a light or dark skin tone are saved in the browser and travel with the roster, so the room sees the kit you picked.
 
 This is peer-to-peer. The host's browser runs `src/sim`. Everyone else sends their stick, triggers, and buttons. The host steps at 60 Hz (two of the usual 1/120 sim steps, so the physics match solo play) and broadcasts snapshots at 20 Hz. Clients **interpolate** those snapshots. They do not predict their own player. You are looking about a tenth of a second behind the host, plus half the ping. The host is watching the live sim, so the host has less delay. That is the host advantage.
 

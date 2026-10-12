@@ -7,10 +7,12 @@ import { timeScaleOf } from '../config/timeScale';
 import type { SimInput } from '../sim/types';
 import { encodeMsg, frameToInput, inputToFrame, packSnapshot, parseMsg, present, stripEdges } from './codec';
 import { createPeerTransport } from './peerjs-transport';
+import { assignSlots } from './roster';
 import { readSignal, roomLink } from './signal';
-import { defaultSlot, makeRoomCode, slotsFor, tintForSlot } from './slots';
+import { defaultSlot, makeRoomCode, slotsFor } from './slots';
+import { aiLook, loadLook, parseLook, saveLook, type Look } from '../sim/look';
 import { applyGameplay, gameplaySettings, iceServers } from './sync';
-import type { InputFrame, NetMsg, NetTransport, Seat, Snapshot } from './types';
+import type { InputFrame, NetMsg, NetTransport, RosterName, Seat, Snapshot } from './types';
 
 const TICK = 1 / 60;
 const SNAP_EVERY = 3;
@@ -57,6 +59,8 @@ export interface NetSession {
   toggleStats(): void;
   /** Host only. Broadcasts gameplay tuning. Local keys are left out. */
   pushSettings(): void;
+  /** Jersey, pants, helmet, and skin. Saved here and sent with the roster. */
+  setLook(look: Look): void;
 }
 
 export function createSession(opts: { sim: Sim; S: Settings; onChange: () => void }): NetSession {
@@ -97,6 +101,9 @@ export function createSession(opts: { sim: Sim; S: Settings; onChange: () => voi
   let settingsBackup: Settings | null = null;
   let forced: { autoReset: boolean; autoSwitchCarrier: boolean } | null = null;
   let hostPeerId = '';
+  let rosterV = 0;
+  let rosterAcc = 0;
+  let lookAhead = false;
 
   function emit() { opts.onChange(); }
 
@@ -124,17 +131,31 @@ export function createSession(opts: { sim: Sim; S: Settings; onChange: () => voi
     S.autoSwitchCarrier = false;
   }
 
-  function labelsFromSeats() {
-    const labels: Record<string, { name: string; tint: number } | null> = {};
+  function copySeats(): Seat[] {
+    return seats.map((s) => ({ ...s, look: { ...s.look } }));
+  }
+
+  /** Names and rings come from the roster every frame, never from a one-time attachment. */
+  function overlayRoster() {
+    if (phase !== 'play' || st.mode !== mode) return;
+    const labels: Record<string, { name: string; tint: number; look: Look } | null> = {};
+    const jerseys: number[] = [];
     for (const seat of seats) {
-      if (!seat.slot) continue;
-      labels[seat.slot] = { name: seat.name, tint: tintForSlot(mode, seat.slot) };
+      if (!seat.slot || !st.players[seat.slot]) continue;
+      const look = seat.look || parseLook(undefined);
+      labels[seat.slot] = { name: seat.name, tint: look.jersey, look };
+      jerseys.push(look.jersey);
     }
+    for (const id of Object.keys(st.players)) if (!labels[id]) labels[id] = null;
     sim.setLabels(labels);
+    for (const p of Object.values(st.players)) {
+      if (labels[p.id]) continue;
+      p.look = aiLook(p.role, jerseys);
+    }
   }
 
   function lobbyMsg(): NetMsg {
-    return { t: 'lobby', players: seats.map((s) => ({ ...s })), mode, freeCount };
+    return { t: 'lobby', v: rosterV, players: copySeats(), mode, freeCount };
   }
 
   function broadcast(msg: NetMsg) { transport?.broadcast(encodeMsg(msg)); }
@@ -150,18 +171,20 @@ export function createSession(opts: { sim: Sim; S: Settings; onChange: () => voi
       inMatch: phase === 'play',
       settings: gameplaySettings(S),
       freeCount,
+      v: rosterV,
     };
   }
 
   function startMsg(): NetMsg {
     const slots: Record<string, string> = {};
-    const names: Record<string, { name: string; tint: number }> = {};
+    const names: Record<string, RosterName> = {};
     for (const seat of seats) {
       if (!seat.slot) continue;
+      const look = seat.look || parseLook(undefined);
       slots[seat.peerId] = seat.slot;
-      names[seat.slot] = { name: seat.name, tint: tintForSlot(mode, seat.slot) };
+      names[seat.slot] = { name: seat.name, tint: look.jersey, look };
     }
-    return { t: 'start', mode, seed, slots, settings: gameplaySettings(S), freeCount, names };
+    return { t: 'start', v: rosterV, mode, seed, slots, settings: gameplaySettings(S), freeCount, names };
   }
 
   function noteSnapSent() {
@@ -171,23 +194,71 @@ export function createSession(opts: { sim: Sim; S: Settings; onChange: () => voi
     snapHz = snapTimes.length;
   }
 
-  function applyNames(names: Record<string, { name: string; tint: number }>) {
-    const labels: Record<string, { name: string; tint: number } | null> = {};
-    for (const [slot, lab] of Object.entries(names)) labels[slot] = lab;
+  function applyNames(names: Record<string, RosterName>) {
+    const labels: Record<string, { name: string; tint: number; look: Look } | null> = {};
+    for (const [slot, lab] of Object.entries(names)) {
+      labels[slot] = { name: lab.name, tint: lab.tint || lab.look?.jersey || 0, look: parseLook(lab.look) };
+    }
     sim.setLabels(labels);
   }
 
-  function beginMatch(nextMode: ModeId, nextCount: number, names: Record<string, { name: string; tint: number }>) {
+  function beginMatch(nextMode: ModeId, nextCount: number, names: Record<string, RosterName>) {
     mode = nextMode;
     freeCount = nextCount;
-    const humans = Object.keys(names).length;
+    const humans = Math.max(Object.keys(names).length, seats.filter((s) => s.slot).length);
     const n = mode === 'free' ? Math.max(2, Math.min(6, Math.max(freeCount, humans))) : freeCount;
-    if (mode === 'free') sim.setRoster(n);
-    sim.setMode(mode);
-    applyNames(names);
+    if (mode === 'free') {
+      freeCount = n;
+      sim.setRoster(n);
+    }
     snaps.length = 0;
-    tickAcc = 0;
+    if (mode === 'throw' && seats.some((s) => s.slot === 'df')) S.throwDefender = true;
+    sim.setMode(mode);
     phase = 'play';
+    applyNames(names);
+    overlayRoster();
+    tickAcc = 0;
+  }
+
+  function reassign() {
+    const next = assignSlots(seats.map((s) => ({ peerId: s.peerId, slot: s.slot })), mode, freeCount);
+    for (const row of next) {
+      const seat = seatByPeer(row.peerId);
+      if (seat) seat.slot = row.slot;
+    }
+    mySlot = seatByPeer(myPeerId())?.slot || '';
+  }
+
+  function publishRoster() {
+    rosterV++;
+    broadcast(lobbyMsg());
+  }
+
+  /** Host only. New mode, slots by peer id, and — once the match is going — a fresh snapshot. */
+  function transitionMode(next: ModeId) {
+    if (role !== 'host' || !(MP_MODE_IDS as readonly ModeId[]).includes(next)) return;
+    mode = next;
+    if (mode === 'free') freeCount = Math.max(2, Math.min(6, Math.max(freeCount, seats.length)));
+    reassign();
+    if (phase === 'play') rebuildMatch();
+    else publishRoster();
+    emit();
+  }
+
+  function rebuildMatch() {
+    forceMatchFlags();
+    const names: Record<string, RosterName> = {};
+    for (const seat of seats) {
+      if (!seat.slot) continue;
+      const look = seat.look || parseLook(undefined);
+      names[seat.slot] = { name: seat.name, tint: look.jersey, look };
+    }
+    beginMatch(mode, freeCount, names);
+    if (mySlot && st.players[mySlot]) st.controlled = mySlot;
+    rosterV++;
+    broadcast(startMsg());
+    broadcast({ t: 'snap', snap: packSnapshot(st) });
+    noteSnapSent();
   }
 
   function assignSlot(peerId: string, slot: string): string {
@@ -198,8 +269,12 @@ export function createSession(opts: { sim: Sim; S: Settings; onChange: () => voi
     if (!seat) return 'You are not in this room.';
     for (const s of seats) if (s.peerId === peerId) s.slot = slot;
     if (peerId === myPeerId()) mySlot = slot;
-    labelsFromSeats();
-    broadcast(lobbyMsg());
+    if (phase === 'play') overlayRoster();
+    publishRoster();
+    if (phase === 'play') {
+      broadcast({ t: 'snap', snap: packSnapshot(st) });
+      noteSnapSent();
+    }
     emit();
     return '';
   }
@@ -210,8 +285,8 @@ export function createSession(opts: { sim: Sim; S: Settings; onChange: () => voi
     bufs.delete(peerId);
     lastSeen.delete(peerId);
     if (role === 'host') {
-      labelsFromSeats();
-      if (phase === 'lobby' || phase === 'play') broadcast(lobbyMsg());
+      if (phase === 'play') overlayRoster();
+      if (phase === 'lobby' || phase === 'play') publishRoster();
       emit();
     }
   }
@@ -267,12 +342,30 @@ export function createSession(opts: { sim: Sim; S: Settings; onChange: () => voi
   function onHostMessage(from: string, msg: NetMsg) {
     lastSeen.set(from, performance.now());
     if (msg.t === 'hello') {
-      if (seats.length >= MAX_PLAYERS) { send(from, { t: 'full' }); return; }
       const name = (msg.name || 'Player').slice(0, 16);
-      if (!seatByPeer(from)) seats.push({ peerId: from, name, slot: '', ping: 0, host: false });
+      const look = parseLook(msg.look);
+      let seat = seatByPeer(from);
+      if (!seat) {
+        if (seats.length >= MAX_PLAYERS) { send(from, { t: 'full' }); return; }
+        seat = { peerId: from, name, slot: '', ping: 0, host: false, look };
+        seats.push(seat);
+      } else {
+        seat.name = name;
+        seat.look = look;
+      }
+      if (phase === 'play') overlayRoster();
+      publishRoster();
       send(from, welcomeFor(from));
       if (phase === 'play') send(from, startMsg());
-      broadcast(lobbyMsg());
+      emit();
+      return;
+    }
+    if (msg.t === 'look') {
+      const seat = seatByPeer(from);
+      if (!seat) return;
+      seat.look = parseLook(msg.look);
+      if (phase === 'play') overlayRoster();
+      publishRoster();
       emit();
       return;
     }
@@ -300,38 +393,55 @@ export function createSession(opts: { sim: Sim; S: Settings; onChange: () => voi
       roomCode = msg.room;
       mode = msg.mode;
       freeCount = msg.freeCount;
-      seats.splice(0, seats.length, ...msg.players.map((s) => ({ ...s })));
+      if (typeof msg.v === 'number') rosterV = msg.v;
+      seats.splice(0, seats.length, ...msg.players.map((s) => ({ ...s, look: parseLook(s.look) })));
       rememberSettings();
       applyGameplay(S, msg.settings);
       status = msg.inMatch ? 'Match in progress. Pick an open slot.' : 'Connected. Pick a slot.';
       phase = 'lobby';
+      lookAhead = false;
       if (mySlot) send(hostPeerId, { t: 'claim', slot: mySlot });
       emit();
       return;
     }
     if (msg.t === 'lobby') {
+      if (typeof msg.v === 'number' && msg.v < rosterV) return;
+      const sameVersion = typeof msg.v === 'number' && msg.v === rosterV;
+      const kept = lookAhead && sameVersion ? seatByPeer(myPeerId())?.look : undefined;
+      if (typeof msg.v === 'number' && msg.v > rosterV) lookAhead = false;
+      if (typeof msg.v === 'number') rosterV = msg.v;
       mode = msg.mode;
       freeCount = msg.freeCount;
-      seats.splice(0, seats.length, ...msg.players.map((s) => ({ ...s })));
+      seats.splice(0, seats.length, ...msg.players.map((s) => ({ ...s, look: parseLook(s.look) })));
       const mine = seatByPeer(myPeerId());
-      mySlot = mine?.slot || mySlot;
-      if (st.mode !== msg.mode) sim.setMode(msg.mode);
+      if (kept && mine) mine.look = kept;
+      mySlot = mine?.slot || '';
+      if (phase === 'play' && st.mode === mode) overlayRoster();
       emit();
       return;
     }
     if (msg.t === 'settings') {
       applyGameplay(S, msg.settings);
-      if ((MP_MODE_IDS as readonly ModeId[]).includes(msg.mode)) {
-        mode = msg.mode;
-        if (st.mode !== msg.mode) sim.setMode(msg.mode);
-      }
       emit();
       return;
     }
     if (msg.t === 'start') {
+      snaps.length = 0;
+      if (typeof msg.v === 'number') rosterV = Math.max(rosterV, msg.v);
+      lookAhead = false;
       rememberSettings();
       applyGameplay(S, msg.settings);
       forceMatchFlags();
+      for (const [peerId, slot] of Object.entries(msg.slots)) {
+        const seat = seatByPeer(peerId);
+        if (seat) seat.slot = slot;
+      }
+      for (const [slot, lab] of Object.entries(msg.names)) {
+        const seat = seats.find((s) => s.slot === slot);
+        if (!seat) continue;
+        if (lab.name) seat.name = lab.name;
+        if (lab.look) seat.look = parseLook(lab.look);
+      }
       mySlot = msg.slots[myPeerId()] || '';
       beginMatch(msg.mode, msg.freeCount, msg.names);
       if (mySlot && st.players[mySlot]) st.controlled = mySlot;
@@ -399,9 +509,8 @@ export function createSession(opts: { sim: Sim; S: Settings; onChange: () => voi
   }
 
   function renderClient() {
-    if (snaps.length === 0) return;
     if (snaps.length === 1) present(st, snaps[0], snaps[0], 1);
-    else {
+    else if (snaps.length > 1) {
       const latest = snaps[snaps.length - 1].t;
       let renderT = latest - RENDER_DELAY;
       if (renderT < snaps[0].t) renderT = snaps[0].t;
@@ -412,20 +521,8 @@ export function createSession(opts: { sim: Sim; S: Settings; onChange: () => voi
       const alpha = span > 1e-4 ? (renderT - a.t) / span : 1;
       present(st, a, b, alpha);
     }
+    overlayRoster();
     if (mySlot && st.players[mySlot]) st.controlled = mySlot;
-  }
-
-  function keepSlots() {
-    const allowed = slotsFor(mode, freeCount);
-    for (const seat of seats) {
-      if (seat.slot && !allowed.some((s) => s.id === seat.slot)) seat.slot = '';
-    }
-    const mine = seatByPeer(myPeerId());
-    mySlot = mine?.slot || '';
-    if (!mySlot && mine) {
-      mySlot = defaultSlot(mode);
-      mine.slot = mySlot;
-    }
   }
 
   function queueLocal(local: SimInput) {
@@ -497,8 +594,9 @@ export function createSession(opts: { sim: Sim; S: Settings; onChange: () => voi
         emit();
         throw lastErr instanceof Error ? lastErr : new Error(status);
       }
-      seats.splice(0, seats.length, { peerId: myPeerId(), name: myName, slot: defaultSlot(mode), ping: 0, host: true });
+      seats.splice(0, seats.length, { peerId: myPeerId(), name: myName, slot: defaultSlot(mode), ping: 0, host: true, look: loadLook() });
       mySlot = seats[0].slot;
+      rosterV = 1;
       phase = 'lobby';
       status = 'Share the code or the link.';
       seed = (Math.random() * 0xffffffff) >>> 0;
@@ -518,7 +616,7 @@ export function createSession(opts: { sim: Sim; S: Settings; onChange: () => voi
       try {
         await transport.startClient(iceServers(S), readSignal());
         await transport.connect(hostPeerId);
-        send(hostPeerId, { t: 'hello', name: myName });
+        send(hostPeerId, { t: 'hello', name: myName, look: loadLook() });
       } catch (err) {
         transport.close();
         transport = null;
@@ -540,29 +638,22 @@ export function createSession(opts: { sim: Sim; S: Settings; onChange: () => voi
       mySlot = slot;
       if (hostPeerId) send(hostPeerId, { t: 'claim', slot });
     },
-    setMode(next: ModeId) {
-      if (role !== 'host' || !(MP_MODE_IDS as readonly ModeId[]).includes(next)) return;
-      mode = next;
-      keepSlots();
-      broadcast(lobbyMsg());
-      emit();
-    },
+    setMode(next: ModeId) { transitionMode(next); },
     setFreeCount(n: number) {
       if (role !== 'host') return;
       freeCount = Math.max(2, Math.min(6, Math.round(n) || 2));
-      keepSlots();
-      broadcast(lobbyMsg());
+      if (mode === 'free') {
+        reassign();
+        if (phase === 'play') rebuildMatch();
+        else publishRoster();
+      } else publishRoster();
       emit();
     },
     start() {
       if (role !== 'host' || (phase !== 'lobby' && phase !== 'play')) return;
-      const humans = seats.filter((s) => s.slot).length;
-      if (mode === 'free') freeCount = Math.max(2, Math.min(6, Math.max(freeCount, humans)));
-      forceMatchFlags();
-      beginMatch(mode, freeCount, {});
-      labelsFromSeats();
-      if (mySlot && st.players[mySlot]) st.controlled = mySlot;
-      broadcast(startMsg());
+      if (mode === 'free') freeCount = Math.max(2, Math.min(6, Math.max(freeCount, seats.length)));
+      reassign();
+      rebuildMatch();
       status = '';
       emit();
     },
@@ -584,12 +675,19 @@ export function createSession(opts: { sim: Sim; S: Settings; onChange: () => voi
       endedReason = '';
       ping = 0;
       snapHz = 0;
+      rosterV = 0;
+      rosterAcc = 0;
+      lookAhead = false;
       emit();
     },
     tick(dt, local) {
       if (phase !== 'lobby' && phase !== 'play') return;
       pingAcc += dt;
       if (pingAcc >= 0.5) { pingAcc = 0; sendPing(); }
+      if (role === 'host') {
+        rosterAcc += dt;
+        if (rosterAcc >= 2) { rosterAcc = 0; broadcast(lobbyMsg()); }
+      }
       if (role === 'host') {
         const now = performance.now();
         for (const seat of [...seats]) {
@@ -630,19 +728,35 @@ export function createSession(opts: { sim: Sim; S: Settings; onChange: () => voi
         tickAcc -= TICK;
         tickN++;
         consumed = true;
+        overlayRoster();
         if (tickN % SNAP_EVERY === 0) {
           broadcast({ t: 'snap', snap: packSnapshot(st) });
           noteSnapSent();
         }
       }
+      overlayRoster();
       if (!consumed && localNow) heldLocal = localNow;
       if (tickAcc > TICK) tickAcc = 0;
     },
     toggleStats() { showStats = !showStats; emit(); },
     pushSettings() {
       if (role !== 'host' || (phase !== 'lobby' && phase !== 'play')) return;
-      if (phase === 'play') mode = st.mode;
-      broadcast({ t: 'settings', settings: gameplaySettings(S), mode: phase === 'play' ? st.mode : mode });
+      broadcast({ t: 'settings', settings: gameplaySettings(S), mode });
+    },
+    setLook(next: Look) {
+      const look = parseLook(next);
+      saveLook(look);
+      const mine = seatByPeer(myPeerId());
+      if (mine) mine.look = look;
+      if (role === 'host' && (phase === 'lobby' || phase === 'play')) {
+        if (phase === 'play') overlayRoster();
+        publishRoster();
+      } else if (role === 'client' && hostPeerId) {
+        lookAhead = true;
+        if (phase === 'play') overlayRoster();
+        send(hostPeerId, { t: 'look', look });
+      }
+      emit();
     },
   };
   return api;

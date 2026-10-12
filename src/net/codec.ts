@@ -154,8 +154,9 @@ export function present(st: SimState, older: Snapshot, newer: Snapshot, alpha: n
     let p = st.players[np.id];
     if (!p) { p = stub(np); st.players[np.id] = p; }
     p.role = np.role;
-    p.name = np.name || undefined;
-    p.tint = np.tint || undefined;
+    // An empty snapshot must not be the last word. The roster overlay rewrites these every frame.
+    if (np.name) p.name = np.name;
+    if (np.tint) p.tint = np.tint;
     p.x = lerp(op.x, np.x, u);
     p.y = lerp(op.y, np.y, u);
     p.z = lerp(op.z, np.z, u);

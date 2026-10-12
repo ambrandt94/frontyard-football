@@ -2,7 +2,7 @@ import type { Settings } from '../../config/defaults';
 import { CAM_FOV, FIELD_L, FIELD_W, LOS_Y } from '../../config/constants';
 import { clamp, rad } from '../../sim/math';
 import type { SimState } from '../../sim/types';
-import { PLAYER_COLORS } from '../colors';
+import { aiLook, hexCss } from '../../sim/look';
 import { makeFieldCanvas } from '../field';
 import type { FieldRenderer, ViewState } from '../types';
 
@@ -122,7 +122,9 @@ export function createCanvasRenderer(S: Settings): FieldRenderer {
         const p = st.players[id];
         const [x, y] = P(p.x, p.y);
         if (view.showReach && id === 'df') ring(p.x, p.y, p.tackle && p.tackle.kind === 'dive' ? S.diveTackleReach : S.wrapReach, p.tackle ? '#ff5252' : p.squared ? '#ffab40' : 'rgba(255,255,255,.3)', 2);
-        if (p.tint != null) ring(p.x, p.y, 1.15, '#' + p.tint.toString(16).padStart(6, '0'), 3);
+        const look = p.look ?? aiLook(p.role, []);
+        const jersey = look.jersey;
+        ring(p.x, p.y, 1.15, hexCss(p.tint ?? jersey), 3);
         if (st.controlled === id) ring(p.x, p.y, 0.9, '#ffd54a', 3);
         if (p.callT != null && st.t - p.callT < 0.9) {
           const [cx, cy] = P(p.x, p.y + 1.2);
@@ -140,7 +142,7 @@ export function createCanvasRenderer(S: Settings): FieldRenderer {
         g.rotate(-(p.facing + (p.spinVis || 0)));
         const lying = p.diveT >= 0 || p.groundT > 0;
         const sc = (1 + p.z * 0.25) * scale * S.playerScale;
-        g.fillStyle = '#' + (PLAYER_COLORS[p.role] || 0xcccccc).toString(16).padStart(6, '0');
+        g.fillStyle = hexCss(jersey);
         if (p.planted) {
           g.strokeStyle = p.planted.falling ? '#ffab40' : '#80deea';
           g.lineWidth = 0.22 * sc;
@@ -160,7 +162,7 @@ export function createCanvasRenderer(S: Settings): FieldRenderer {
         }
         if (lying) { g.beginPath(); g.ellipse(0.5 * sc, 0, 1.0 * sc, 0.42 * sc, 0, 0, 7); g.fill(); }
         else { g.beginPath(); g.ellipse(0, 0, 0.42 * sc, 0.65 * sc, 0, 0, 7); g.fill(); }
-        g.fillStyle = '#f2f2f2';
+        g.fillStyle = hexCss(look.helmet);
         g.beginPath();
         g.arc(lying ? 1.2 * sc : 0, 0, 0.3 * sc, 0, 7);
         g.fill();

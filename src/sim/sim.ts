@@ -5,6 +5,7 @@
 import { catchBandRange, type Settings } from '../config/defaults';
 import { CATCH_H, FIELD_L, FIELD_W, GOAL_Y, GRAV, HOME_Y, JOG_TILT, LOS_Y, RELEASE_H, ROUTES, routeDef } from '../config/constants';
 import type { ModeId } from '../modes';
+import type { Look } from './look';
 import { approachAngle, clamp, gauss as gaussOf, lerp, lowAngle, rad, speedForAngle, wrapAngle } from './math';
 import { defaultRng, type Rng } from './rng';
 import { freshThrowArm, stepThrowArm, throwTune } from './throwArm';
@@ -42,7 +43,7 @@ export interface Sim {
   setSlotInputs(inputs: Record<string, SimInput> | null, hostSlotId: string | null): void;
   /** Throw Around spawn count, 2–6. */
   setRoster(n: number): void;
-  setLabels(labels: Record<string, { name: string; tint: number } | null>): void;
+  setLabels(labels: Record<string, { name: string; tint: number; look?: Look } | null>): void;
 }
 
 export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
@@ -1964,11 +1965,19 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     netHostSlot = hostSlotId;
   }
   function setRoster(n: number) { roster = clamp(Math.round(n), 2, 6); }
-  function setLabels(labels: Record<string, { name: string; tint: number } | null>) {
+  function setLabels(labels: Record<string, { name: string; tint: number; look?: Look } | null>) {
     for (const p of Object.values(st.players)) {
       const lab = labels[p.id];
-      if (lab) { p.name = lab.name; p.tint = lab.tint; }
-      else { delete p.name; delete p.tint; }
+      if (lab) {
+        p.name = lab.name;
+        p.tint = lab.tint;
+        if (lab.look) p.look = { ...lab.look };
+        else delete p.look;
+      } else {
+        delete p.name;
+        delete p.tint;
+        delete p.look;
+      }
     }
   }
 
