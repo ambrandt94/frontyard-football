@@ -13,6 +13,7 @@ import { freshThrowArm, stepThrowArm, throwTune } from './sim/throwArm';
 import type { SimInput, ThrowPhase, Vec2 } from './sim/types';
 import { AIM_MODE_LABEL, aimModeOf, createAimState, nextAimMode, resampleArc, stepAim } from './input/aim';
 import { createInput } from './input/input';
+import { updateStickHud } from './ui/stickHud';
 import type { PolledInput } from './input/input';
 import { createCanvasRenderer } from './render/canvas2d/renderer';
 import { createThreeRenderer } from './render/three/renderer';
@@ -426,6 +427,7 @@ function frame(now: number) {
     st, S, inp, input, rendererName: renderer.name, stats: hud.stats, fb: hud.fb, pad: hud.pad, power: hud.power, prompt: promptEl,
     aimHint: performance.now() < aimHintUntil ? aimHint : null,
   });
+  updateStickHud(st.players[st.controlled]);
   updateFloaters({ st, renderer, poseSheet: !!viewState.poseSheet, floatEl });
   lobby.paintStats();
   requestAnimationFrame(frame);

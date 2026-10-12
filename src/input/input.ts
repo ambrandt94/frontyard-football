@@ -1,6 +1,6 @@
 import type { Settings } from '../config/defaults';
 import { ROUTES } from '../config/constants';
-import { radialDeadzone } from '../sim/math';
+import { markStickDirty, shapeStick, stickCal, tickStickCal, type StickReading } from './stick';
 import { throwTune } from '../sim/throwArm';
 import { blankInput, type SimInput, type ThrowPhase } from '../sim/types';
 import { freshTrigger, stepTrigger } from './trigger';
@@ -38,6 +38,16 @@ export interface InputController {
   poll(): { inp: PolledInput; meta: InputMeta };
   /** Last throw-arm phase, so a second click during the lob window sends a lob press. */
   setArmPhase(phase: ThrowPhase): void;
+}
+
+function fieldStick(r: StickReading): StickReading {
+  return {
+    ...r,
+    y: -r.y,
+    rawY: -r.rawY,
+    deg: Math.atan2(-r.y, r.x) * 180 / Math.PI,
+    rawDeg: Math.atan2(-r.rawY, r.rawX) * 180 / Math.PI,
+  };
 }
 
 export function createInput(S: Settings, view: HTMLElement): InputController {
@@ -99,6 +109,7 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
     mouse,
     setArmPhase(phase: ThrowPhase) { armPhase = phase; },
     poll() {
+      tickStickCal();
       const inp = blankInput() as PolledInput;
       const meta: InputMeta = { switch: false, reset: false, start: false, routeDelta: 0, route: null, toggleRenderer: false, toggleHelp: false, toggleGui: false, cycleTime: false, mode: false, posePreview: false, cycleAim: false, zoom: 0, cycleCam: false, zoomStop: false };
       const pad = getPad();
@@ -110,10 +121,16 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
         const E = (i: number) => B(i) && !prevButtons[i];
         const rawRX = pad.axes[2] || 0;
         const rawRY = pad.axes[3] || 0;
-        aimStick = { x: rawRX, y: -rawRY };
-        const L = radialDeadzone(pad.axes[0] || 0, pad.axes[1] || 0, S.deadzone);
-        const R = radialDeadzone(rawRX, rawRY, S.deadzone);
-        if (L.m > 0) { padMove = { x: L.x, y: -L.y }; lastDevice = 'gamepad'; }
+        const learn = stickCal.calibrating ? 'rim' as const : 'play' as const;
+        const leftBefore = stickCal.left.max.join();
+        const rightBefore = stickCal.right.max.join();
+        const L = fieldStick(shapeStick(pad.axes[0] || 0, pad.axes[1] || 0, stickCal.left, S.deadzone, learn));
+        const R = fieldStick(shapeStick(rawRX, rawRY, stickCal.right, S.deadzone, learn));
+        stickCal.leftReading = L;
+        stickCal.rightReading = R;
+        if (stickCal.left.max.join() !== leftBefore || stickCal.right.max.join() !== rightBefore) markStickDirty();
+        aimStick = { x: R.x, y: R.y };
+        if (L.m > 0) { padMove = { x: L.x, y: L.y }; lastDevice = 'gamepad'; }
         if (Math.hypot(rawRX, rawRY) > S.aimDeadzone) { aimMode = 'stick'; lastDevice = 'gamepad'; }
         inp.lt = V(6) > 0.3;
         inp.sprint = E(10);
@@ -164,7 +181,7 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
         if (E(14)) meta.routeDelta = -1;
         if (E(12)) meta.mode = true;
         if (E(13)) meta.zoomStop = true;
-        if (R.m > 0) inp.rs = { x: R.x, y: -R.y };
+        if (R.m > 0) inp.rs = { x: R.x, y: R.y };
         inp.lbHeld = B(4);
         inp.rbHeld = B(5);
         if (pad.buttons.some((b) => b.pressed)) lastDevice = 'gamepad';

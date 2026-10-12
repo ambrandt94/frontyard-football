@@ -42,8 +42,8 @@ The controls card is a small overlay. The first visit shows it; after that it st
 
 | Input | Action |
 | --- | --- |
-| Left stick | Move. Partial tilt jogs, full tilt runs. |
-| L3 (click) | Sprint pump. Each click adds speed, it holds, then fades. Cuts and easing off fade it faster. |
+| Left stick | Move. Partial tilt jogs, full tilt runs. A short diagonal still counts as full tilt: the stick is rescaled per direction, and anything past about 0.9 is full immediately. **Calibrate sticks** in the View folder asks you to rotate both sticks so that reach is learned up front. It is also learned while you play, and saved on this machine. |
+| L3 (click) | Sprint pump. Each click adds speed, it holds, then fades. A real cut fades it faster. Easing off only starts after the stick stays under 0.7 for a moment, so a brief dip does not cancel the sprint. **Stick debug overlay** in the View folder shows the raw and calibrated stick next to the sprint state. |
 | LT | Square up / slow down (two-hand catch, or a defender breaking down). |
 | Right stick | QB aim, field-relative (up the stick is upfield, on every camera). **K** switches Absolute+ and Direction charge. Absolute+ uses the stick angle for direction and the push for distance. Direction charge uses the stick for the line only; RT slides a marker along it and B cancels. Letting the stick spring back keeps the spot for a short grace. On a run, a flick is a move (sidestep, truck, spin, juke) relative to your heading. A defender lunges in that world direction: forward and at speed goes farthest, sideways is shorter, and backward is a short weak step. |
 | RT | QB: pull past the engage mark to charge the distance. Squeeze it fully for a bullet at the current spot. Let go, then pull again inside the lob window (about 0.3s) for a lob to the locked spot. Miss the window and it is a pump fake: nothing is thrown. A brush shorter than the minimum hold does nothing. B cancels a charge. Receiver: one-hand catch, on the engage edge only. |

@@ -6,7 +6,7 @@ import { catchBandRange, type Settings } from '../config/defaults';
 import { CATCH_H, FIELD_L, FIELD_W, GOAL_Y, GRAV, HOME_Y, JOG_TILT, LOS_Y, RELEASE_H, ROUTES, routeDef } from '../config/constants';
 import type { ModeId } from '../modes';
 import type { Look } from './look';
-import { approachAngle, clamp, gauss as gaussOf, lerp, lowAngle, rad, speedForAngle, wrapAngle } from './math';
+import { approachAngle, clamp, easeThresholds, gauss as gaussOf, lerp, lowAngle, rad, speedForAngle, wrapAngle } from './math';
 import { defaultRng, type Rng } from './rng';
 import { freshThrowArm, stepThrowArm, throwTune } from './throwArm';
 import { blankInput, type AiBag, type ArcPoint, type Ball, type Move, type Player, type SimInput, type SimState, type ThrowSolution, type Vec2 } from './types';
@@ -84,7 +84,7 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
 
   function newPlayer(id: string, role: string, x: number, y: number): Player {
     return {
-      id, role, x, y, vx: 0, vy: 0, z: 0, facing: Math.PI / 2, sprint: false, boost: 0, boostHold: 0, boostFast: false, squared: false, squareDir: Math.PI / 2,
+      id, role, x, y, vx: 0, vy: 0, z: 0, facing: Math.PI / 2, sprint: false, boost: 0, boostHold: 0, boostFast: false, easeLow: 0, easing: false, cutAim: null, squared: false, squareDir: Math.PI / 2,
       plantT: 0, jumpT: -1, diveT: -1, diveDir: 0, diveSpeed: 0, groundT: 0, stick: 0,
       attempt: null, lastAttempt: null, cooldownUntil: 0, wasIn: false, lateUntil: 0, dropPending: false, blockedPass: false,
       lbT: -1, rbT: -1, lbTTap: -9, rbTTap: -9, lbTDbl: false, rbTDbl: false, flickArmed: true, curFlick: null, pitchPending: null, bufferedFlick: null, handTapUndo: null,
@@ -211,9 +211,33 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
       const maxBoost = Math.max(0, S.sprintMaxSpeed - S.fullSpeed);
       let sp = Math.hypot(p.vx, p.vy);
       if (inp.sprint && m > 0.3 && !p.squared) { p.boost = Math.min(maxBoost, p.boost + S.boostPerPump); p.boostHold = S.boostHoldDelay; }
+      // Cut detection follows a low-passed heading. A one-frame wobble stays inside the deadband
+      // and does not fast-fade the boost. The velocity above still tracks the raw stick.
+      const CUT_DEADBAND = rad(10);
+      const CUT_SLEW = 6;
+      if (m > 0.25) {
+        const aim = Math.atan2(my, mx);
+        if (p.cutAim == null) p.cutAim = aim;
+        else {
+          const d = wrapAngle(aim - p.cutAim);
+          if (Math.abs(d) > CUT_DEADBAND) {
+            const step = Math.sign(d) * Math.min(Math.abs(d) - CUT_DEADBAND, CUT_SLEW * dt);
+            p.cutAim = wrapAngle(p.cutAim + step);
+          }
+        }
+      }
       let cutting = false;
-      if (m > 0.001 && sp > 1) { const a = Math.acos(clamp((p.vx * mx + p.vy * my) / (sp * m), -1, 1)); cutting = a > rad(S.cutDecayAngleDeg); }
-      p.boostFast = cutting || m < S.easeOffStick || p.squared;
+      if (p.cutAim != null && sp > 1) {
+        const a = Math.acos(clamp((p.vx * Math.cos(p.cutAim) + p.vy * Math.sin(p.cutAim)) / sp, -1, 1));
+        cutting = a > rad(S.cutDecayAngleDeg);
+      }
+      const ease = easeThresholds(S.easeOffStick);
+      if (m >= ease.exit) { p.easeLow = 0; p.easing = false; }
+      else if (m < ease.enter) {
+        p.easeLow += dt;
+        if (p.easeLow >= ease.grace) p.easing = true;
+      }
+      p.boostFast = cutting || p.easing || p.squared;
       if (p.boostFast) p.boostHold = 0;
       if (p.boostHold > 0) p.boostHold -= dt;
       else if (p.boost > 0) p.boost = Math.max(0, p.boost - S.boostDecayRate * (p.boostFast ? S.cutDecayMult : 1) * dt);

@@ -22,6 +22,15 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1a0e; fon
 #feedback { position: fixed; top: 14%; left: 50%; transform: translateX(-50%); font-size: 34px; font-weight: 800; letter-spacing: .08em; color: var(--hud-text); text-shadow: 0 2px 0 #000; pointer-events: none; transition: opacity .25s; }
 #feedback:not(:empty) { background: var(--hud-bg); border: 1px solid var(--hud-line); border-radius: 12px; padding: 6px 16px; }
 #padnote { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); background: var(--hud-bg); border: 1px solid var(--hud-line); color: var(--hud-muted); padding: 6px 12px; border-radius: 999px; font-size: 12px; pointer-events: none; }
+#stick-cal, #stick-debug { position: fixed; z-index: 35; background: rgba(8, 16, 12, .92); color: #e7f0e8; border: 1px solid rgba(255,255,255,.16); border-radius: 10px; font-size: 12px; }
+#stick-cal { top: 16%; left: 50%; transform: translateX(-50%); padding: 10px 14px; text-align: center; max-width: min(380px, calc(100vw - 24px)); }
+#stick-cal p { margin: 6px 0 0; }
+#stick-cal b, #stick-debug b { color: #ffd54a; }
+#stick-cal i, #stick-debug .dim { color: #9fb5a6; }
+#stick-cal i { display: inline-block; width: 8px; height: 8px; margin: 0 2px; border-radius: 50%; background: #24362c; box-shadow: inset 0 0 0 1px rgba(255,255,255,.2); font-style: normal; }
+#stick-cal i.on { background: #9fe39f; }
+#stick-debug { left: 12px; bottom: 48px; padding: 8px 10px; line-height: 1.45; font-variant-numeric: tabular-nums; pointer-events: none; }
+#stick-cal.hidden, #stick-debug.hidden { display: none; }
 #power { position: fixed; top: 46px; left: 50%; transform: translateX(-50%); width: 280px; background: var(--hud-bg); border: 1px solid var(--hud-line); padding: 6px 8px 3px; border-radius: 12px; pointer-events: none; display: none; }
 #power .bar { height: 12px; border-radius: 6px; background: linear-gradient(90deg, #4fc3f7, #fff176, #ff7043); position: relative; border: 1px solid #000; }
 #power .fill { position: absolute; top: -3px; width: 4px; height: 18px; background: #fff; border: 1px solid #000; left: 0; }

@@ -120,7 +120,7 @@ export function packSnapshot(st: SimState): Snapshot {
 function stub(src: SnapPlayer): Player {
   return {
     id: src.id, role: src.role, x: src.x, y: src.y, vx: 0, vy: 0, z: 0, facing: src.facing,
-    sprint: false, boost: 0, boostHold: 0, boostFast: false, squared: false, squareDir: src.facing,
+    sprint: false, boost: 0, boostHold: 0, boostFast: false, easeLow: 0, easing: false, cutAim: null, squared: false, squareDir: src.facing,
     plantT: 0, jumpT: -1, diveT: -1, diveDir: 0, diveSpeed: 0, groundT: 0, stick: 0,
     attempt: null, lastAttempt: null, cooldownUntil: 0, wasIn: false, lateUntil: 0, dropPending: false, blockedPass: false,
     lbT: -1, rbT: -1, lbTTap: -9, rbTTap: -9, lbTDbl: false, rbTDbl: false, flickArmed: true, curFlick: null,

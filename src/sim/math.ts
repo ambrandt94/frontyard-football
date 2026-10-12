@@ -25,6 +25,17 @@ export function gauss(rng: Rng): number {
   return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
 }
 
+/**
+ * Sprint eases off only after the stick stays under `enter` for `grace` seconds,
+ * and it stays off until the stick is back above `exit`.
+ * 0.85 is the old default; saved copies of it still use 0.7.
+ */
+export function easeThresholds(easeOffStick: number): { enter: number; exit: number; grace: number } {
+  const enter = easeOffStick === 0.85 ? 0.7 : easeOffStick;
+  const exit = Math.min(0.98, Math.round((enter + 0.15) * 1000) / 1000);
+  return { enter, exit, grace: 0.12 };
+}
+
 export function radialDeadzone(x: number, y: number, dz: number): { x: number; y: number; m: number } {
   const m = Math.hypot(x, y);
   if (m < dz) return { x: 0, y: 0, m: 0 };

@@ -107,6 +107,12 @@ export interface Player {
   boost: number;
   boostHold: number;
   boostFast: boolean;
+  /** Seconds the calibrated stick has stayed under the ease-off line. */
+  easeLow: number;
+  /** Fast sprint fade is on until the stick climbs back above the release line. */
+  easing: boolean;
+  /** Low-passed stick heading for cut detection. Steering still uses the raw stick. */
+  cutAim: number | null;
   squared: boolean;
   squareDir: number;
   plantT: number;

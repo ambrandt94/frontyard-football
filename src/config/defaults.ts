@@ -296,7 +296,9 @@ export const DEFAULTS: Settings = {
   boostDecayRate: 2.75,
   cutDecayAngleDeg: 35,
   cutDecayMult: 3.5,
-  easeOffStick: 0.85,
+  // 0.7, and a 120ms grace, so a short diagonal is not an instant ease-off.
+  // A saved 0.85 (the old default) is read as 0.7. See easeThresholds.
+  easeOffStick: 0.7,
   ltSpeedCap: 4,
   deadzone: 0.15,
   rtEngage: 0.35,

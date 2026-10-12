@@ -25,6 +25,7 @@ import type { Look } from '../sim/look';
 import type { Sim } from '../sim/sim';
 import type { FieldRenderer } from '../render/types';
 import { mountLookEditor } from './lookEditor';
+import { startStickCalibrate, toggleStickDebug } from '../input/stick';
 
 export interface SandboxUi {
   posePreview: boolean;
@@ -462,6 +463,12 @@ export function createPanel(opts: {
   fn.add(S, 'netTurnCred').name('TURN credential');
   const fv = gui.addFolder('View');
   fv.add(S, 'deadzone', 0, 0.5, 0.01).name('stick radial deadzone');
+  const sticks = {
+    calibrate() { startStickCalibrate(); },
+    debug() { toggleStickDebug(); },
+  };
+  fv.add(sticks, 'calibrate').name('Calibrate sticks');
+  fv.add(sticks, 'debug').name('Stick debug overlay');
   fv.add(S, 'rtEngage', 0.05, 0.85, 0.01).name('RT engage');
   fv.add(S, 'rtRelease', 0, 0.5, 0.01).name('RT release');
   fv.add(S, 'rtMinHoldMs', 0, 300, 5).name('RT min hold (ms)');
