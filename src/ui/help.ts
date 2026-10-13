@@ -59,8 +59,8 @@ const BODY = [
   ].join('')),
   section('qb', 'Quarterback', [
     row(`${R3} ${key('L')}`, 'Flip the right stick. THROW aims and throws. CARRY jukes, spins, sidesteps, and trucks. The QB starts in THROW. The chip by the player shows which one.'),
-    row(`${RS} ${key('Mouse')} ${key('K')}`, 'Aim while you hold the stick. K switches Absolute+ (angle and distance) and Direction charge (the stick picks the line, RT slides the distance). Letting the stick go back to center cancels the wind-up, and nothing is thrown.'),
-    row(`${RT}`, 'With the stick held, squeeze and release. A light squeeze is a touch or lob. A full squeeze is a bullet. A quick brush does nothing. With the stick centered, a squeeze opens a short pitch window. Flick the stick to choose the direction. A gentle flick is a little short, a fast flick a little long. Miss the window and nothing happens.'),
+    row(`${RS} ${key('Mouse')} ${key('K')}`, 'Aim while you hold the stick. K switches Absolute+ (angle and distance) and Direction charge (the stick picks the line, RT slides the distance). A small ease-off keeps the aim. Letting the stick go back to center while RT is still held cancels the wind-up, and nothing is thrown.'),
+    row(`${RT}`, 'With the stick held, squeeze to charge the distance and release to throw that spot. The deepest squeeze in the charge is the one that counts: a light squeeze is a touch or lob, and a full squeeze is a bullet. A quick brush does nothing. With the stick centered, a squeeze opens a short pitch window. Flick the stick to choose the direction. A gentle flick is a little short, a fast flick a little long. Miss the window and nothing happens.'),
     row(`${key('Mouse')} ${key('F')}`, 'Hold the left button and release for a touch. Hold F during that press for a bullet. F alone, with the arrows centered, opens the pitch window.'),
   ].join('')),
   section('receiver', 'Receiver', [

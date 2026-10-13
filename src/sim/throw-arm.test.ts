@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULTS } from '../config/defaults';
-import { STEP } from '../config/constants';
+import { CATCH_H, STEP } from '../config/constants';
+import { createAimState, stepAim } from '../input/aim';
+import { freshTrigger, stepTrigger } from '../input/trigger';
 import { createSim } from './sim';
 import { mulberry32 } from './rng';
 import { blankInput, type SimInput, type Vec2 } from './types';
@@ -38,6 +40,15 @@ function aimOf(s: ReturnType<typeof boot>, yards: number): Vec2 {
 function loft(s: ReturnType<typeof boot>) {
   const b = s.state.ball;
   return Math.atan2(b.vz, Math.hypot(b.vx, b.vy)) * 180 / Math.PI;
+}
+
+/** Where the pass arrives at chest height. The ground landing is past that. */
+function catchSpot(s: ReturnType<typeof boot>) {
+  const arc = s.state.ball.arc;
+  for (let i = 1; i < arc.length; i++) {
+    if (arc[i].z <= CATCH_H && arc[i - 1].z > CATCH_H) return arc[i];
+  }
+  return s.state.ball.landing;
 }
 
 describe('throw arm', () => {
@@ -89,13 +100,112 @@ describe('throw arm', () => {
     expect(s.state.ball.state).toBe('held');
   });
 
-  it('releasing the stick and the trigger on the same frame does not throw', () => {
+  it('centering the stick on the release frame still throws the charged spot', () => {
     const s = boot();
-    const spot = aimOf(s, 18);
-    frames(s, 0.2, { trigger: 1, aim: spot, stickHeld: true });
-    s.step(STEP, press({ trigger: 0, aim: spot, stickHeld: false }));
-    expect(s.state.throwArm.last).toBe('cancel');
-    expect(s.state.ball.state).toBe('held');
+    const spot = aimOf(s, 24);
+    const near = aimOf(s, 2);
+    frames(s, 0.25, { trigger: 1, aim: spot, stickHeld: true });
+    s.step(STEP, press({ trigger: 0, aim: near, stickHeld: false }));
+    expect(s.state.throwArm.last).toBe('throw');
+    expect(s.state.ball.state).toBe('air');
+    expect(s.state.ball.power).toBeGreaterThan(0.9);
+    const aimed = s.state.ball.aimed!;
+    expect(Math.hypot(aimed.x - spot.x, aimed.y - spot.y)).toBeLessThan(0.2);
+    const arrive = catchSpot(s)!;
+    expect(Math.hypot(arrive.x - spot.x, arrive.y - spot.y)).toBeLessThan(1.5);
+  });
+});
+
+/**
+ * A finger leaving RT and the right stick does not snap to zero in one poll.
+ * Both analog values fall across several frames, and the stick often reaches
+ * neutral while the trigger is still on its way down.
+ */
+describe('gamepad release trace', () => {
+  const FRAME = 1 / 60;
+
+  function fall(from: number, to: number, n: number): number[] {
+    const out: number[] = [];
+    for (let i = 1; i <= n; i++) {
+      const u = i / n;
+      const k = 1 - (1 - u) ** 2;
+      out.push(from + (to - from) * k);
+    }
+    return out;
+  }
+
+  function trace(rtHold: number) {
+    const s = boot();
+    const aimState = createAimState();
+    let triggerLatch = freshTrigger();
+    let prevRt = 0;
+    let now = 0;
+    const tune = { engage: DEFAULTS.rtEngage, release: DEFAULTS.rtRelease, minHoldMs: DEFAULTS.rtMinHoldMs };
+    const holdN = Math.round(0.45 / FRAME);
+    const releaseN = 8;
+    const stickFall = fall(0.94, 0, releaseN);
+    const rtFall = fall(rtHold, 0, releaseN);
+    const samples: { x: number; y: number; rt: number; release: boolean }[] = [];
+    for (let i = 0; i < holdN; i++) samples.push({ x: 0.02, y: 0.94, rt: rtHold, release: false });
+    for (let i = 0; i < releaseN; i++) {
+      samples.push({ x: 0.02 * (1 - (i + 1) / releaseN), y: stickFall[i], rt: rtFall[i], release: true });
+    }
+
+    let charged: { x: number; y: number; dist: number } | null = null;
+    for (const frame of samples) {
+      now += FRAME;
+      const pulled = stepTrigger(triggerLatch, frame.rt, now * 1000, prevRt, tune);
+      triggerLatch = pulled.latch;
+      prevRt = frame.rt;
+      const mag = Math.hypot(frame.x, frame.y);
+      const stickHeld = mag >= 0.15;
+      const qb = s.state.players.qb;
+      const aimed = stepAim(aimState, {
+        stick: { x: frame.x, y: frame.y },
+        mouse: null,
+        qb: { x: qb.x, y: qb.y },
+        charging: pulled.latch.charging && stickHeld,
+        pressure: pulled.charge,
+        cancel: false,
+      }, FRAME, DEFAULTS, now);
+      if (!frame.release && pulled.latch.charging) charged = { x: aimed.x, y: aimed.y, dist: aimed.dist };
+      const steps = Math.round(FRAME / STEP);
+      for (let i = 0; i < steps; i++) {
+        s.step(STEP, press({
+          trigger: frame.rt,
+          aim: { x: aimed.x, y: aimed.y },
+          stickHeld,
+          charge: pulled.charge,
+        }));
+      }
+    }
+    return { s, charged };
+  }
+
+  it('lands on the charged spot after a multi-frame stick and RT release', () => {
+    const bullet = trace(1);
+    expect(bullet.charged).toBeTruthy();
+    expect(bullet.charged!.dist).toBeGreaterThan(DEFAULTS.chargeMinDist + 8);
+    expect(bullet.s.state.ball.state).toBe('air');
+    expect(bullet.s.state.throwArm.last).toBe('throw');
+    expect(bullet.s.state.ball.power).toBeGreaterThan(0.9);
+    const aimed = bullet.s.state.ball.aimed!;
+    const miss = Math.hypot(aimed.x - bullet.charged!.x, aimed.y - bullet.charged!.y);
+    const arrive = catchSpot(bullet.s)!;
+    const qb = bullet.s.state.players.qb;
+    const landDist = Math.hypot(arrive.x - qb.x, arrive.y - qb.y);
+    expect(miss).toBeLessThan(1);
+    expect(Math.hypot(arrive.x - bullet.charged!.x, arrive.y - bullet.charged!.y)).toBeLessThan(1.5);
+    expect(Math.abs(landDist - bullet.charged!.dist)).toBeLessThan(2);
+    expect(landDist).toBeGreaterThan(12);
+
+    const touch = trace(0.5);
+    expect(touch.s.state.ball.state).toBe('air');
+    expect(touch.s.state.ball.power).toBeLessThan(0.33);
+    expect(touch.charged!.dist).toBeGreaterThan(DEFAULTS.chargeMinDist + 8);
+    const touchAim = touch.s.state.ball.aimed!;
+    expect(Math.hypot(touchAim.x - touch.charged!.x, touchAim.y - touch.charged!.y)).toBeLessThan(1);
+    expect(Math.abs(touch.charged!.dist - bullet.charged!.dist)).toBeLessThan(1.5);
   });
 });
 

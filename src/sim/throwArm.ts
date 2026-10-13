@@ -8,7 +8,7 @@ export interface ThrowTune {
 }
 
 export function freshThrowArm(): ThrowArm {
-  return { phase: 'idle', since: 0, prev: 0, peak: 0, wait: false, last: 'none', power: 0 };
+  return { phase: 'idle', since: 0, prev: 0, peak: 0, releasing: false, wait: false, last: 'none', power: 0, lock: null };
 }
 
 export function throwTune(S: {
@@ -31,11 +31,18 @@ export function throwPower(peak: number, engage: number): number {
   return Math.max(0, Math.min(1, (peak - engage) / span));
 }
 
+function copyLock(lock: Vec2 | null): Vec2 | null {
+  return lock ? { x: lock.x, y: lock.y } : null;
+}
+
 /**
  * One sim step of the throw arm.
- * The right stick has to be held. RT past the engage mark charges, and the
- * peak past that mark is the power. Releasing RT throws: a light peak is a
- * touch or lob, a full peak is a bullet. Letting the stick go cancels.
+ * The right stick has to be out. RT past the engage mark charges, and the
+ * deepest squeeze in that window is the power: a light peak is a touch or
+ * lob, a full peak is a bullet. Distance and direction are latched while RT
+ * is held, and the release throws that spot. A stick that eases off as the
+ * trigger falls does not shorten or cancel the throw. Centering the stick
+ * while RT stays down does.
  */
 export function stepThrowArm(
   arm: ThrowArm,
@@ -45,16 +52,26 @@ export function stepThrowArm(
   t: number,
   tune: ThrowTune,
 ): { arm: ThrowArm; action: ThrowAction; target: Vec2 | null; power: number } {
-  const next: ThrowArm = { ...arm };
+  const next: ThrowArm = { ...arm, lock: copyLock(arm.lock) };
   const prev = arm.prev;
   const tr = Math.max(0, Math.min(1, trigger || 0));
   next.prev = tr;
   const spot = aim ? { x: aim.x, y: aim.y } : null;
   if (next.wait && tr < tune.release) next.wait = false;
+  // One animation frame is several sim steps with the same trigger, so a
+  // single-step drop is not enough. Once RT leaves its peak, remember that
+  // the release is underway until the squeeze comes back.
+  const triggerFalling = tr < prev - 0.04;
+  if (next.phase === 'charge') {
+    if (triggerFalling) next.releasing = true;
+    if (tr >= arm.peak - 0.03) next.releasing = false;
+  }
 
-  if (next.phase === 'charge' && !stickHeld) {
+  if (next.phase === 'charge' && !stickHeld && tr >= tune.release && !next.releasing) {
     next.phase = 'idle';
     next.peak = 0;
+    next.releasing = false;
+    next.lock = null;
     next.wait = tr >= tune.release;
     next.last = 'cancel';
     return { arm: next, action: 'cancel', target: null, power: 0 };
@@ -65,21 +82,29 @@ export function stepThrowArm(
       next.phase = 'charge';
       next.since = t;
       next.peak = tr;
+      next.releasing = false;
+      next.lock = copyLock(spot);
     }
     return { arm: next, action: null, target: null, power: 0 };
   }
 
   if (tr > next.peak) next.peak = tr;
+  // Keep the last aim from while RT was still held at its peak. Once the
+  // squeeze is on its way down, the easing stick must not replace it.
+  if (stickHeld && tr >= tune.release && spot && !next.releasing) next.lock = copyLock(spot);
   if (tr < tune.release) {
     const held = t - next.since;
     const power = throwPower(next.peak, tune.engage);
+    const target = copyLock(next.lock) || spot;
     next.phase = 'idle';
     next.peak = 0;
-    if (held >= tune.minHold && spot) {
+    next.releasing = false;
+    next.lock = null;
+    if (held >= tune.minHold && target) {
       next.wait = true;
       next.last = 'throw';
       next.power = power;
-      return { arm: next, action: 'throw', target: spot, power };
+      return { arm: next, action: 'throw', target, power };
     }
     next.last = 'brush';
     next.power = 0;

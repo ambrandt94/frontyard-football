@@ -409,16 +409,20 @@ export interface StepFactor {
 export type ThrowPhase = 'idle' | 'charge';
 export type ThrowAction = 'throw' | 'cancel' | null;
 
-/** Analog RT charge. Release throws. A neutral right stick cancels. */
+/** Analog RT charge. Release throws the latched spot. A neutral stick cancels only while RT is still held. */
 export interface ThrowArm {
   phase: ThrowPhase;
   since: number;
   prev: number;
   /** Highest trigger reading during this charge. */
   peak: number;
+  /** RT has dropped during this charge, so a stick easing home is part of the release. */
+  releasing: boolean;
   /** Ignore the trigger until it drops below the release mark. */
   wait: boolean;
   last: 'none' | 'throw' | 'brush' | 'cancel';
   /** Power of the last throw, 0 loft through 1 bullet. */
   power: number;
+  /** Aim captured while the stick was out and RT was still held. */
+  lock: Vec2 | null;
 }
