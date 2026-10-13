@@ -17,6 +17,17 @@ export function aimModeOf(value: string): AimMode {
   return value === 'directionCharge' ? 'directionCharge' : 'absolutePlus';
 }
 
+/**
+ * Deflection that starts the distance meter. Compared with the raw right
+ * stick, and with the aim magnitude after its own deadzone. The old arm
+ * line was 0.45, stacked on the 0.15 movement deadzone.
+ */
+export const METER_START = 0.08;
+
+export function rightStickAims(rawMag: number): boolean {
+  return rawMag >= METER_START;
+}
+
 /** dist = minDist + (maxDist - minDist) * m^distExp, with m in 0..1. */
 export function polarDistance(m: number, minDist: number, maxDist: number, distExp: number): number {
   const u = Math.min(1, Math.max(0, m));
@@ -141,6 +152,10 @@ export interface AimState {
   endVy: number;
   angleFilter: OneEuro;
   magFilter: OneEuro;
+  /** Meter reading and direction captured while the stick was actually aiming. */
+  latchDist: number;
+  latchAngle: number;
+  latchOn: boolean;
 }
 
 export function createAimState(): AimState {
@@ -167,6 +182,9 @@ export function createAimState(): AimState {
     endVy: 0,
     angleFilter: new OneEuro(),
     magFilter: new OneEuro(),
+    latchDist: 12,
+    latchAngle: 0,
+    latchOn: false,
   };
 }
 
@@ -223,15 +241,18 @@ export function stepAim(state: AimState, sample: AimSample, dt: number, settings
   const now = nowSeconds;
   const dead = Math.min(0.95, Math.max(0, settings.aimDeadzone));
   let suppressThrow = false;
+  let mag = 0;
+  let falling = false;
 
   if (sample.stick && !sample.hold) {
     const dz = radialDeadzone(sample.stick.x, sample.stick.y, dead);
-    const mag = dz.m;
+    mag = dz.m;
     const rate = frame > 1e-6 ? (mag - state.lastMag) / frame : 0;
     state.lastMag = mag;
-    const falling = rate < -1.5;
+    falling = rate < -1.5;
+    const easing = state.latchOn && falling;
     if (mag > state.peakMag) state.peakMag = mag;
-    if (!falling && mag >= 0.45) {
+    if (!falling && mag >= METER_START) {
       state.armedMag = mag;
       state.armedAt = now;
       state.armedDist = state.dist;
@@ -240,7 +261,7 @@ export function stepAim(state: AimState, sample: AimSample, dt: number, settings
     const sprung =
       mode === 'absolutePlus' &&
       !state.holding &&
-      state.armedMag >= 0.45 &&
+      state.armedMag >= METER_START &&
       mag < state.armedMag * 0.4 &&
       now - state.armedAt < 0.25;
     if (sprung) {
@@ -250,9 +271,9 @@ export function stepAim(state: AimState, sample: AimSample, dt: number, settings
       state.angleDeg = state.armedAngle;
       state.peakMag = 0;
     }
-    if (state.holding && mag > 0.32) state.holding = false;
+    if (state.holding && mag > 0.2) state.holding = false;
     const frozen = mode === 'absolutePlus' && state.holding && now < state.holdUntil;
-    if (!frozen && mag > 0) {
+    if (!frozen && mag > 0 && !easing) {
       let raw = Math.atan2(dz.x, dz.y) * 180 / Math.PI;
       if (mag > 0.8 && Math.abs(wrap180(raw - state.heldAngle)) < settings.aimAngleDeadband) raw = state.heldAngle;
       else state.heldAngle = raw;
@@ -262,7 +283,10 @@ export function stepAim(state: AimState, sample: AimSample, dt: number, settings
         const filtered = state.magFilter.filter(mag, now, settings.aimEuroMin, settings.aimEuroBeta);
         state.dist = polarDistance(filtered, settings.aimMinDist, settings.aimMaxDist, settings.aimDistExp);
       }
-    } else if (!frozen && mag <= 0 && mode === 'absolutePlus' && !state.holding) {
+    } else if (!frozen && easing) {
+      state.angleDeg = state.latchAngle;
+      if (mode === 'absolutePlus' && state.dist < state.latchDist) state.dist = state.latchDist;
+    } else if (!frozen && mag <= 0 && mode === 'absolutePlus' && !state.holding && !state.latchOn) {
       const filtered = state.magFilter.filter(0, now, settings.aimEuroMin, settings.aimEuroBeta);
       state.dist = polarDistance(filtered, settings.aimMinDist, settings.aimMaxDist, settings.aimDistExp);
       state.peakMag = 0;
@@ -292,26 +316,45 @@ export function stepAim(state: AimState, sample: AimSample, dt: number, settings
       state.chargeOn = false;
       state.chargeT = 0;
       state.chargeBlock = true;
+      state.latchOn = false;
       state.dist = settings.chargeMinDist;
       suppressThrow = true;
     } else if (sample.hold) {
       state.chargeOn = true;
     } else if (sample.charging && !state.chargeBlock) {
-      state.chargeOn = true;
-      state.chargeT += frame;
-      state.dist = chargeDistance(
-        state.chargeT,
-        settings.chargeMinDist,
-        settings.chargeMaxDist,
-        settings.chargeTime,
-        settings.chargeExp,
-        settings.chargePingPong,
-      );
+      const started = state.chargeOn || !sample.stick || mag >= METER_START;
+      if (started) {
+        state.chargeOn = true;
+        state.chargeT += frame;
+        state.dist = chargeDistance(
+          state.chargeT,
+          settings.chargeMinDist,
+          settings.chargeMaxDist,
+          settings.chargeTime,
+          settings.chargeExp,
+          settings.chargePingPong,
+        );
+      }
     } else if (!sample.charging) {
       state.chargeOn = false;
       state.chargeT = 0;
-      state.dist = settings.chargeMinDist;
+      if (!state.latchOn) state.dist = settings.chargeMinDist;
     }
+  }
+
+  if (sample.cancel) state.latchOn = false;
+  else if (sample.charging && !falling && (mag >= METER_START || !sample.stick)) {
+    state.latchDist = state.dist;
+    state.latchAngle = state.angleDeg;
+    state.latchOn = true;
+  } else if (sample.charging && state.latchOn) {
+    if (state.dist < state.latchDist) state.dist = state.latchDist;
+    else state.latchDist = state.dist;
+    state.angleDeg = state.latchAngle;
+  } else if (!sample.charging && !sample.hold && state.latchOn) {
+    state.dist = state.latchDist;
+    state.angleDeg = state.latchAngle;
+    state.latchOn = false;
   }
 
   const spot = pointOn(sample.qb, state.angleDeg, state.dist);

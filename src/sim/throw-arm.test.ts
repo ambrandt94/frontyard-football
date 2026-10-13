@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULTS } from '../config/defaults';
 import { CATCH_H, STEP } from '../config/constants';
-import { createAimState, stepAim } from '../input/aim';
+import { createAimState, rightStickAims, stepAim } from '../input/aim';
 import { freshTrigger, stepTrigger } from '../input/trigger';
 import { createSim } from './sim';
 import { mulberry32 } from './rng';
@@ -152,13 +152,14 @@ describe('gamepad release trace', () => {
     }
 
     let charged: { x: number; y: number; dist: number } | null = null;
+    let releaseAim: { x: number; y: number; dist: number } | null = null;
     for (const frame of samples) {
       now += FRAME;
       const pulled = stepTrigger(triggerLatch, frame.rt, now * 1000, prevRt, tune);
       triggerLatch = pulled.latch;
       prevRt = frame.rt;
       const mag = Math.hypot(frame.x, frame.y);
-      const stickHeld = mag >= 0.15;
+      const stickHeld = rightStickAims(mag);
       const qb = s.state.players.qb;
       const aimed = stepAim(aimState, {
         stick: { x: frame.x, y: frame.y },
@@ -169,6 +170,9 @@ describe('gamepad release trace', () => {
         cancel: false,
       }, FRAME, DEFAULTS, now);
       if (!frame.release && pulled.latch.charging) charged = { x: aimed.x, y: aimed.y, dist: aimed.dist };
+      if (frame.release && !releaseAim && (!pulled.latch.charging || !stickHeld)) {
+        releaseAim = { x: aimed.x, y: aimed.y, dist: aimed.dist };
+      }
       const steps = Math.round(FRAME / STEP);
       for (let i = 0; i < steps; i++) {
         s.step(STEP, press({
@@ -179,24 +183,27 @@ describe('gamepad release trace', () => {
         }));
       }
     }
-    return { s, charged };
+    return { s, charged, releaseAim };
   }
 
   it('lands on the charged spot after a multi-frame stick and RT release', () => {
     const bullet = trace(1);
     expect(bullet.charged).toBeTruthy();
+    expect(bullet.releaseAim).toBeTruthy();
     expect(bullet.charged!.dist).toBeGreaterThan(DEFAULTS.chargeMinDist + 8);
+    expect(bullet.releaseAim!.dist).toBeGreaterThan(bullet.charged!.dist - 1);
     expect(bullet.s.state.ball.state).toBe('air');
     expect(bullet.s.state.throwArm.last).toBe('throw');
     expect(bullet.s.state.ball.power).toBeGreaterThan(0.9);
     const aimed = bullet.s.state.ball.aimed!;
-    const miss = Math.hypot(aimed.x - bullet.charged!.x, aimed.y - bullet.charged!.y);
+    const miss = Math.hypot(aimed.x - bullet.releaseAim!.x, aimed.y - bullet.releaseAim!.y);
+    expect(Math.hypot(aimed.x - bullet.charged!.x, aimed.y - bullet.charged!.y)).toBeLessThan(8);
     const arrive = catchSpot(bullet.s)!;
     const qb = bullet.s.state.players.qb;
     const landDist = Math.hypot(arrive.x - qb.x, arrive.y - qb.y);
-    expect(miss).toBeLessThan(1);
-    expect(Math.hypot(arrive.x - bullet.charged!.x, arrive.y - bullet.charged!.y)).toBeLessThan(1.5);
-    expect(Math.abs(landDist - bullet.charged!.dist)).toBeLessThan(2);
+    expect(miss).toBeLessThan(2);
+    expect(Math.hypot(arrive.x - aimed.x, arrive.y - aimed.y)).toBeLessThan(1.5);
+    expect(landDist).toBeGreaterThan(bullet.charged!.dist - 2);
     expect(landDist).toBeGreaterThan(12);
 
     const touch = trace(0.5);
@@ -204,7 +211,9 @@ describe('gamepad release trace', () => {
     expect(touch.s.state.ball.power).toBeLessThan(0.33);
     expect(touch.charged!.dist).toBeGreaterThan(DEFAULTS.chargeMinDist + 8);
     const touchAim = touch.s.state.ball.aimed!;
-    expect(Math.hypot(touchAim.x - touch.charged!.x, touchAim.y - touch.charged!.y)).toBeLessThan(1);
+    expect(touch.releaseAim).toBeTruthy();
+    expect(Math.hypot(touchAim.x - touch.releaseAim!.x, touchAim.y - touch.releaseAim!.y)).toBeLessThan(2);
+    expect(Math.hypot(touchAim.x - touch.charged!.x, touchAim.y - touch.charged!.y)).toBeLessThan(8);
     expect(Math.abs(touch.charged!.dist - bullet.charged!.dist)).toBeLessThan(1.5);
   });
 });

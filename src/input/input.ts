@@ -2,6 +2,7 @@ import type { Settings } from '../config/defaults';
 import { ROUTES } from '../config/constants';
 import { markStickDirty, shapeStick, stickCal, tickStickCal, type StickReading } from './stick';
 import { blankInput, type SimInput } from '../sim/types';
+import { rightStickAims } from './aim';
 import { freshTrigger, stepTrigger } from './trigger';
 
 export interface InputMeta {
@@ -108,17 +109,21 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
       const pad = getPad();
       let padMove: { x: number; y: number } | null = null;
       let aimStick: { x: number; y: number } | null = null;
+      let rightMag = 0;
       if (pad) {
         const B = (i: number) => pad.buttons[i] ? pad.buttons[i].pressed : false;
         const V = (i: number) => pad.buttons[i] ? pad.buttons[i].value : 0;
         const E = (i: number) => B(i) && !prevButtons[i];
         const rawRX = pad.axes[2] || 0;
         const rawRY = pad.axes[3] || 0;
+        rightMag = Math.hypot(rawRX, rawRY);
         const learn = stickCal.calibrating ? 'rim' as const : 'play' as const;
         const leftBefore = stickCal.left.max.join();
         const rightBefore = stickCal.right.max.join();
         const L = fieldStick(shapeStick(pad.axes[0] || 0, pad.axes[1] || 0, stickCal.left, S.deadzone, learn));
-        const R = fieldStick(shapeStick(rawRX, rawRY, stickCal.right, S.deadzone, learn));
+        // Aim uses its own deadzone. The movement deadzone would keep the meter dark
+        // until the stick was most of the way out.
+        const R = fieldStick(shapeStick(rawRX, rawRY, stickCal.right, 0, learn));
         stickCal.leftReading = L;
         stickCal.rightReading = R;
         if (stickCal.left.max.join() !== leftBefore || stickCal.right.max.join() !== rightBefore) markStickDirty();
@@ -174,7 +179,11 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
         if (E(14)) meta.routeDelta = -1;
         if (E(12)) meta.mode = true;
         if (E(13)) meta.zoomStop = true;
-        if (R.m > 0) inp.rs = { x: R.x, y: R.y };
+        if (R.m > S.deadzone) {
+          const reach = Math.max(S.deadzone + 0.05, 1);
+          const m = Math.min(1, (R.m - S.deadzone) / (reach - S.deadzone));
+          inp.rs = { x: (R.x / R.m) * m, y: (R.y / R.m) * m };
+        }
         if (E(11)) inp.modeToggle = true;
         inp.lbHeld = B(4);
         inp.rbHeld = B(5);
@@ -241,7 +250,7 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
         if (!arrowT) arrowT = now;
         if (now - arrowT > 60 && !inp.rs) { const am = Math.hypot(ax, ay); inp.rs = { x: ax / am, y: ay / am }; }
       } else arrowT = 0;
-      inp.stickHeld = !!inp.rs || mouseHeld;
+      inp.stickHeld = rightStickAims(rightMag) || !!inp.rs || mouseHeld;
       if (pulled.latch.charging && inp.stickHeld) inp.charge = pulled.charge;
       inp.start = meta.start;
       inp.aimStick = aimStick;

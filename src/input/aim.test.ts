@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULTS } from '../config/defaults';
 import { createSim } from '../sim/sim';
 import {
+  METER_START,
   chargeDistance,
   createAimState,
   polarDistance,
   resampleArc,
+  rightStickAims,
   stepAim,
   type AimSample,
 } from './aim';
@@ -159,5 +161,59 @@ describe('aim spec v1', () => {
     expect(err).toBeLessThan(0.1);
     expect(drawErr).toBeLessThan(0.1);
     expect(drawn.length).toBe(33);
+  });
+
+  it('starts the distance meter below the old half-stick line', () => {
+    expect(METER_START).toBeLessThan(0.15);
+    expect(rightStickAims(0.1)).toBe(true);
+    expect(rightStickAims(0.04)).toBe(false);
+    const settings = { ...DEFAULTS, aimMode: 'directionCharge' as const };
+    const state = createAimState();
+    let now = 0;
+    let dist = 0;
+    let angle = 0;
+    const stick = { x: 0.1, y: 0.08 };
+    for (let i = 0; i < 40; i++) {
+      now += DT;
+      const out = stepAim(state, sample(stick, { charging: true, pressure: 0.8 }), DT, settings, now);
+      dist = out.dist;
+      angle = out.angleDeg;
+    }
+    expect(Math.hypot(stick.x, stick.y)).toBeLessThan(0.45);
+    expect(state.armedMag).toBeGreaterThan(0);
+    expect(state.armedMag).toBeLessThan(0.45);
+    expect(dist).toBeGreaterThan(settings.chargeMinDist + 3);
+    expect(Math.abs(angle)).toBeGreaterThan(30);
+  });
+
+  it('keeps the charged distance and direction when the stick eases off', () => {
+    const settings = { ...DEFAULTS, aimMode: 'directionCharge' as const };
+    const state = createAimState();
+    let now = 0;
+    const held = { x: 0.55, y: 0.8 };
+    let charged = { dist: 0, angleDeg: 0 };
+    for (let i = 0; i < 30; i++) {
+      now += DT;
+      const out = stepAim(state, sample(held, { charging: true, pressure: 0.9 }), DT, settings, now);
+      charged = { dist: out.dist, angleDeg: out.angleDeg };
+    }
+    expect(charged.dist).toBeGreaterThan(settings.chargeMinDist + 4);
+    const ease = [
+      { x: 0.4, y: 0.55 },
+      { x: 0.22, y: 0.3 },
+      { x: 0.08, y: 0.12 },
+      { x: 0.02, y: 0.04 },
+    ];
+    for (const stick of ease) {
+      now += DT;
+      const out = stepAim(state, sample(stick, { charging: true, pressure: 0.7 }), DT, settings, now);
+      expect(out.dist).toBeGreaterThan(charged.dist - 0.05);
+      expect(Math.abs(out.angleDeg - charged.angleDeg)).toBeLessThan(8);
+    }
+    now += DT;
+    const released = stepAim(state, sample({ x: 0, y: 0 }, { charging: false, pressure: null }), DT, settings, now);
+    expect(released.dist).toBeGreaterThan(charged.dist - 0.05);
+    expect(Math.abs(released.angleDeg - charged.angleDeg)).toBeLessThan(8);
+    expect(released.dist).toBeGreaterThan(settings.chargeMinDist + 4);
   });
 });

@@ -324,7 +324,7 @@ export const DEFAULTS: Settings = {
   lobAngleDeg: 35,
   throwVarianceDeg: 1.5,
   aimMode: 'directionCharge',
-  aimDeadzone: 0.12,
+  aimDeadzone: 0.05,
   aimMinDist: 3,
   aimMaxDist: 50,
   aimDistExp: 1.6,

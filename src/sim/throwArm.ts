@@ -89,9 +89,9 @@ export function stepThrowArm(
   }
 
   if (tr > next.peak) next.peak = tr;
-  // Keep the last aim from while RT was still held at its peak. Once the
-  // squeeze is on its way down, the easing stick must not replace it.
-  if (stickHeld && tr >= tune.release && spot && !next.releasing) next.lock = copyLock(spot);
+  // The release frame's near-zero stick is not stickHeld, and its trigger is
+  // already under the release mark, so it cannot replace the latched spot.
+  if (stickHeld && tr >= tune.release && spot) next.lock = copyLock(spot);
   if (tr < tune.release) {
     const held = t - next.since;
     const power = throwPower(next.peak, tune.engage);
