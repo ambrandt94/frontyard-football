@@ -1,11 +1,17 @@
 import { PLAYER_COLORS } from '../render/colors';
 
-/** Colors a person picked for their body. Saved on this machine and sent with the roster. */
+/** Colors and build a person picked. Saved on this machine and sent with the roster. */
 export interface Look {
   jersey: number;
   pants: number;
   helmet: number;
   skin: 'light' | 'dark';
+  /** Crown height in yards. */
+  height: number;
+  /** Shoulder and hip width. 1 is average. */
+  build: number;
+  /** Arm and leg thickness. 1 is average. */
+  limb: number;
 }
 
 export const DEFAULT_LOOK: Look = {
@@ -13,6 +19,9 @@ export const DEFAULT_LOOK: Look = {
   pants: 0xf2f2f2,
   helmet: 0xf5f5f5,
   skin: 'light',
+  height: 2,
+  build: 1,
+  limb: 1,
 };
 
 /** Curated kit colors. A custom picker can still choose anything else. */
@@ -37,6 +46,11 @@ function hexNum(v: unknown, fallback: number): number {
   return fallback;
 }
 
+function ranged(v: unknown, fallback: number, min: number, max: number): number {
+  const n = typeof v === 'number' && Number.isFinite(v) ? v : fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
 export function parseLook(raw: unknown): Look {
   const o = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
   return {
@@ -44,6 +58,9 @@ export function parseLook(raw: unknown): Look {
     pants: hexNum(o.pants, DEFAULT_LOOK.pants),
     helmet: hexNum(o.helmet, DEFAULT_LOOK.helmet),
     skin: o.skin === 'dark' ? 'dark' : 'light',
+    height: ranged(o.height, DEFAULT_LOOK.height, 1.6, 2.3),
+    build: ranged(o.build, DEFAULT_LOOK.build, 0.6, 1.55),
+    limb: ranged(o.limb, DEFAULT_LOOK.limb, 0.55, 1.65),
   };
 }
 
@@ -82,5 +99,8 @@ export function aiLook(role: string, humanJerseys: number[]): Look {
     pants: 0xf2f2f2,
     helmet: role === 'DF' ? 0x212121 : 0xf5f5f5,
     skin: 'light',
+    height: DEFAULT_LOOK.height,
+    build: DEFAULT_LOOK.build,
+    limb: DEFAULT_LOOK.limb,
   };
 }

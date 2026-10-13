@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import { clamp, lerp } from '../../sim/math';
 import type { Player } from '../../sim/types';
-import { MODEL, type ModelInstance } from './model';
+import type { ModelInstance } from './model';
 
 type Euler3 = [number, number, number];
 type PoseDef = Record<string, Euler3 | number> & { hipsDrop?: number };
@@ -34,17 +34,22 @@ export const POSES: Record<string, PoseDef> = {
   truck: { Spine02: [38, 0, 0], Spine01: [12, 0, 0], '*Arm': [-35, 0, 25], '*ForeArm': [-90, 0, 0], hipsDrop: 0.1 },
   tackle: { Spine02: [38, 0, 0], '*Arm': [-85, 0, 35], '*ForeArm': [-50, 0, 0], '*UpLeg': [-35, 0, 8], '*Leg': [45, 0, 0], hipsDrop: 0.12 },
   ground: { '*Arm': [-30, 0, 55], '*ForeArm': [-20, 0, 0], '*UpLeg': [-5, 0, 6] },
+  getup: { Spine02: [42, 0, 0], Spine01: [12, 0, 0], '*Arm': [-55, 0, 28], '*ForeArm': [-35, 0, 0], '*UpLeg': [-72, 0, 8], '*Leg': [95, 0, 0], hipsDrop: 0.28 },
+  juke: { Spine02: [10, 32, -6], LeftUpLeg: [-18, 28, 10], RightUpLeg: [-48, -18, -8], RightLeg: [62, 0, 0], LeftArm: [-25, 0, 28], RightArm: [-8, 0, -16], hipsDrop: 0.08 },
+  cut: { Spine02: [8, -30, 8], LeftUpLeg: [-12, 0, 16], RightUpLeg: [-52, 0, -10], RightLeg: [74, 0, 0], LeftArm: [-28, 0, 22], RightArm: [-8, 0, -18], hipsDrop: 0.06 },
+  spin: { Spine02: [12, 48, 0], Spine01: [4, 22, 0], '*Arm': [-42, 0, 26], '*ForeArm': [-20, 0, 0], '*UpLeg': [-22, 12, 6], '*Leg': [28, 0, 0] },
+  pitchR: { Spine02: [10, -18, 0], RightArm: [-78, 0, -18], RightForeArm: [-36, 0, 0], LeftArm: [-12, 0, 14], LeftForeArm: [-20, 0, 0] },
+  pitchL: { Spine02: [10, 18, 0], LeftArm: [-78, 0, 18], LeftForeArm: [-36, 0, 0], RightArm: [-12, 0, -14], RightForeArm: [-20, 0, 0] },
 };
 
 export const RUN_CYCLE = {
   strideYd: 2.3,
   jog: { thigh: 32, knee: 55, arm: 38 },
   sprint: { thigh: 50, knee: 85, arm: 62 },
-  walkClipBelow: 3.0,
   bob: 0.03,
 };
 
-const ARM_POSES = ['carryR', 'carryL', 'throwWindup', 'throwRelease', 'catchTwo', 'catchOne', 'callHand', 'stiffL', 'stiffR', 'tackle'];
+const ARM_POSES = ['carryR', 'carryL', 'throwWindup', 'throwRelease', 'catchTwo', 'catchOne', 'callHand', 'stiffL', 'stiffR', 'tackle', 'pitchR', 'pitchL', 'juke', 'cut', 'spin'];
 const POSE_LIST = Object.keys(POSES);
 const POSE_EUL: Record<string, Record<string, Euler3>> = {};
 for (const k of POSE_LIST) {
@@ -84,8 +89,11 @@ export function poseTargets(p: Player, st: PoseWorld, view: PoseView) {
   const b = st.ball;
   if (p.forcePose) { add(p.forcePose); return { w, sp: p.forceSpeed || 0, loco: !!p.forceSpeed }; }
   let loco = false;
-  if (p.groundT > 0) add('ground');
-  else if (p.diveT >= 0) add('dive');
+  if (p.groundT > 0) {
+    const rise = clamp((0.5 - p.groundT) / 0.5, 0, 1);
+    add('ground', 1 - rise * 0.85);
+    if (rise > 0.02) add('getup', rise);
+  } else if (p.diveT >= 0) add('dive');
   else if (p.planted) add(p.planted.falling ? 'fall' : 'stretch', Math.max(0.35, p.stretch || 0));
   else if (p.z > 0.05) add(p.role === 'RB' ? 'hurdle' : 'jump');
   else if (p.tackle && (p.tackle.kind === 'wrap' || p.tackle.kind === 'lunge')) add('tackle');
@@ -100,9 +108,13 @@ export function poseTargets(p: Player, st: PoseWorld, view: PoseView) {
     }
     if (p.stiffArm) add(p.stiffArm === 'L' ? 'stiffL' : 'stiffR');
     if (p.move && p.move.type === 'truck') add('truck');
+    if (p.move && p.move.type === 'juke') add('juke');
+    if (p.move && p.move.type === 'sidestep') add('cut');
+    if (p.move && p.move.type === 'spin') add('spin');
     if (p.plantT > 0) add('plant');
     if (p.squared) add('squared');
-    if (b.holder === p.id && p.role !== 'QB' && !p.stiffArm) add(p.hand === 'L' ? 'carryL' : 'carryR');
+    if (b.holder === p.id && p.pitchUntil > t) add(p.hand === 'L' ? 'pitchL' : 'pitchR');
+    else if (b.holder === p.id && p.role !== 'QB' && !p.stiffArm) add(p.hand === 'L' ? 'carryL' : 'carryR');
   }
   return { w, sp, loco };
 }
@@ -118,7 +130,6 @@ export function poseModel(m: ModelInstance, p: Player, st: PoseWorld, view: Pose
   }
   const runF = loco ? clamp(sp / 8, 0, 1) : 0;
   const sprintF = loco ? clamp((p.boost || 0) / 1.5, 0, 1) * runF : 0;
-  const walkW = loco && m.walk && sp > 0.4 && sp < RUN_CYCLE.walkClipBelow + 1 ? clamp((RUN_CYCLE.walkClipBelow + 1 - sp) / 1.5, 0, 1) : 0;
   if (p.forcePose) m.phase = p.forcePhase || 1.2;
   else m.phase += dt * sp / RUN_CYCLE.strideYd * Math.PI * 2 * (loco ? 1 : 0);
   const armBusy = clamp(ARM_POSES.reduce((a, kk) => a + (m.w[kk] || 0), 0), 0, 1);
@@ -129,11 +140,6 @@ export function poseModel(m: ModelInstance, p: Player, st: PoseWorld, view: Pose
     lw.stance = (lw.stance || 0) + (1 - runF) * (1 - Math.min(1, (m.w.squared || 0) + (m.w.plant || 0)));
   }
   m.bones.forEach((bn, i) => bn.quaternion.copy(m.rest[i]));
-  if (walkW > 0.01 && m.walk && m.mixer && MODEL.walk) {
-    m.walk.time = (m.phase / (Math.PI * 2) * MODEL.walk.duration) % MODEL.walk.duration;
-    m.mixer.update(0);
-    m.bones.forEach((bn, i) => { _q.copy(bn.quaternion); bn.quaternion.copy(m.rest[i]).slerp(_q, walkW); });
-  }
   m.hips.position.copy(m.hipsRest);
   const off: Record<string, Euler3> = {};
   const addE = (bone: string, r: Euler3, s: number) => {
@@ -146,7 +152,7 @@ export function poseModel(m: ModelInstance, p: Player, st: PoseWorld, view: Pose
     for (const [bone, r] of Object.entries(POSE_EUL[key])) addE(bone, r, wt);
     drop += (POSES[key].hipsDrop || 0) * wt;
   }
-  const sw = runF * (1 - walkW);
+  const sw = runF;
   if (sw > 0.01) {
     const A = {
       thigh: lerp(RUN_CYCLE.jog.thigh, RUN_CYCLE.sprint.thigh, sprintF),
@@ -154,11 +160,17 @@ export function poseModel(m: ModelInstance, p: Player, st: PoseWorld, view: Pose
       arm: lerp(RUN_CYCLE.jog.arm, RUN_CYCLE.sprint.arm, sprintF),
     };
     const s1 = Math.sin(m.phase);
+    const swingL = Math.max(0, s1);
+    const swingR = Math.max(0, -s1);
     const d = Math.PI / 180;
     addE('LeftUpLeg', [-A.thigh * s1 * d, 0, 0], sw);
     addE('RightUpLeg', [A.thigh * s1 * d, 0, 0], sw);
-    addE('LeftLeg', [A.knee * (0.55 + 0.45 * Math.cos(m.phase)) * d, 0, 0], sw);
-    addE('RightLeg', [A.knee * (0.55 - 0.45 * Math.cos(m.phase)) * d, 0, 0], sw);
+    addE('LeftLeg', [(14 + (A.knee - 14) * swingL) * d, 0, 0], sw);
+    addE('RightLeg', [(14 + (A.knee - 14) * swingR) * d, 0, 0], sw);
+    addE('LeftFoot', [(-24 * swingL + 8 * (1 - swingL)) * d, 0, 0], sw);
+    addE('RightFoot', [(-24 * swingR + 8 * (1 - swingR)) * d, 0, 0], sw);
+    addE('Hips', [0, -7 * s1 * d, 0], sw);
+    addE('Spine01', [0, 5 * s1 * d, 0], sw);
     const as = sw * (1 - armBusy);
     addE('LeftArm', [A.arm * s1 * d, 0, 0], as * (m.w.carryL ? 0.2 : 1));
     addE('RightArm', [-A.arm * s1 * d, 0, 0], as * (m.w.carryR ? 0.2 : 1));
@@ -186,4 +198,20 @@ export function poseModel(m: ModelInstance, p: Player, st: PoseWorld, view: Pose
     m.hips.parent?.worldToLocal(_v);
     m.hips.position.copy(_v);
   }
+}
+
+const PREVIEW_PLAYER = {
+  id: 'preview', role: 'WR', x: 0, y: 0, z: 0, vx: 0, vy: 4.4, facing: 0,
+  hand: 'R', handSwitchT: 0, diveT: -1, groundT: 0, boost: 0, pitchUntil: 0,
+  move: null, stiffArm: null, attempt: null, tackle: null, plantT: 0, squared: false,
+} as Player;
+
+const PREVIEW_BALL = { holder: null, state: 'dead', throwT: 0 };
+
+/** Jog the procedural cycle in the My Player preview. */
+export function previewJog(m: ModelInstance, dt: number) {
+  const start = m.lastT == null;
+  const t = (m.lastT ?? 0) + Math.max(0.016, dt);
+  if (start) m.lastT = t - 0.2;
+  poseModel(m, PREVIEW_PLAYER, { t, mode: 'free', ball: PREVIEW_BALL }, { qbCharge: null });
 }

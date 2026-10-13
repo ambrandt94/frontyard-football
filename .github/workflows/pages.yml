@@ -33,9 +33,10 @@ jobs:
         run: |
           set -euo pipefail
           test -f dist/index.html
-          test -f dist/assets/player.glb
-          test -f dist/assets/player_basecolor.png
-          test -f dist/assets/player_orm.png
+          if find dist -name 'player.glb' -o -name 'player_basecolor.png' -o -name 'player_orm.png' -o -name 'player_mask.png' | grep -q .; then
+            echo "procedural player should not ship the old model files" >&2
+            exit 1
+          fi
           grep -E -q 'src="/frontyard-football/assets/[^"]+\.js"' dist/index.html
           if grep -q '/src/main.ts' dist/index.html; then
             echo "dist/index.html still references /src/main.ts" >&2

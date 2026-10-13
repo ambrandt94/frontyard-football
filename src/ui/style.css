@@ -151,6 +151,10 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1a0e; fon
 .pm-name { display: block; font-size: 12px; color: #c9d6cc; margin: 0 0 12px; }
 .pm-name input { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; background: #0b1a0e; color: #eef; border: 1px solid rgba(255, 255, 255, .2); border-radius: 8px; padding: 8px 10px; font: inherit; font-size: 15px; }
 .pm-name input.pad-focus { border-color: var(--hud-accent); box-shadow: 0 0 0 2px rgba(255, 213, 74, .35); }
+.pm-sliders { display: grid; gap: 8px; margin: 0 0 14px; }
+.pm-sliders label { display: grid; grid-template-columns: 58px 1fr auto; gap: 8px; align-items: center; color: #c9d6cc; font-size: 12px; }
+.pm-sliders input[type="range"] { width: 100%; accent-color: var(--hud-accent); }
+.pm-sliders b { min-width: 2.6em; text-align: right; color: #eef; font-weight: 700; }
 .pm-parts { display: flex; gap: 4px; background: #0b1a0e; padding: 4px; border-radius: 999px; margin-bottom: 12px; }
 .pm-parts button { flex: 1; background: transparent; color: #c9d6cc; border: 0; border-radius: 999px; padding: 7px 8px; font: inherit; font-size: 13px; cursor: pointer; }
 .pm-parts button.on { background: #1e4d2b; color: #fff; }

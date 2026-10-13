@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { DEFAULTS } from '../config/defaults';
+import { bodyKey, bodyOf } from '../render/three/body';
 import { makeModelInstance, MODEL, type ModelInstance } from '../render/three/model';
+import { previewJog } from '../render/three/poses';
 import { hexCss, SKIN_TONE, SWATCHES, type Look } from '../sim/look';
 import { draftProfile, saveProfile, type PlayerProfile } from '../sim/profile';
 import { cyclePart, moveNav, PARTS, type NavState, type Part } from './playerNav';
@@ -34,6 +36,11 @@ export function createPlayerModal(opts: { onSave: (profile: PlayerProfile) => vo
           <label class="pm-name">Name
             <input id="pm-name" maxlength="16" autocomplete="nickname" spellcheck="false">
           </label>
+          <div class="pm-sliders">
+            <label>Height <input id="pm-height" type="range" min="1.75" max="2.15" step="0.01"> <b id="pm-height-val"></b></label>
+            <label>Build <input id="pm-build" type="range" min="0.75" max="1.35" step="0.01"> <b id="pm-build-val"></b></label>
+            <label>Limbs <input id="pm-limb" type="range" min="0.7" max="1.45" step="0.01"> <b id="pm-limb-val"></b></label>
+          </div>
           <div class="pm-parts" id="pm-parts"></div>
           <div class="pm-grid" id="pm-grid"></div>
           <input id="pm-color" class="pm-color" type="color" tabindex="-1" aria-hidden="true">
@@ -62,6 +69,12 @@ export function createPlayerModal(opts: { onSave: (profile: PlayerProfile) => vo
   const fig = root.querySelector('.pm-fig') as HTMLElement;
   const loading = root.querySelector('.pm-loading') as HTMLElement;
   const nameInput = byId('pm-name') as HTMLInputElement;
+  const heightInput = byId('pm-height') as HTMLInputElement;
+  const buildInput = byId('pm-build') as HTMLInputElement;
+  const limbInput = byId('pm-limb') as HTMLInputElement;
+  const heightVal = byId('pm-height-val');
+  const buildVal = byId('pm-build-val');
+  const limbVal = byId('pm-limb-val');
   const partsEl = byId('pm-parts');
   const grid = byId('pm-grid');
   const colorInput = byId('pm-color') as HTMLInputElement;
@@ -134,8 +147,14 @@ export function createPlayerModal(opts: { onSave: (profile: PlayerProfile) => vo
   function paint() {
     title.textContent = required ? 'Create your player' : 'My Player';
     sub.textContent = required
-      ? 'Pick a name and a kit. You need this before you play.'
-      : 'This name and kit show up on the field and in online rooms.';
+      ? 'Pick a name, a kit, and a body. You need this before you play.'
+      : 'This name, kit, and body show up on the field and in online rooms.';
+    heightInput.value = String(draft.look.height);
+    buildInput.value = String(draft.look.build);
+    limbInput.value = String(draft.look.limb);
+    heightVal.textContent = draft.look.height.toFixed(2);
+    buildVal.textContent = draft.look.build.toFixed(2);
+    limbVal.textContent = draft.look.limb.toFixed(2);
     closeBtn.hidden = required;
     const current: number | null = nav.part === 'skin' ? null : draft.look[nav.part];
     partsEl.querySelectorAll('button').forEach((btn) => {
@@ -258,12 +277,14 @@ export function createPlayerModal(opts: { onSave: (profile: PlayerProfile) => vo
   function onKey(e: KeyboardEvent) {
     if (!open) return;
     const typing = document.activeElement === nameInput;
+    const sliding = (document.activeElement as HTMLInputElement | null)?.type === 'range';
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
       if (!required) close();
       return;
     }
+    if (sliding) return;
     if (typing && e.key !== 'ArrowUp' && e.key !== 'ArrowDown' && e.key !== 'Enter') return;
     if (e.key === 'ArrowUp') nudge(0, -1);
     else if (e.key === 'ArrowDown') nudge(0, 1);
@@ -373,6 +394,19 @@ export function createPlayerModal(opts: { onSave: (profile: PlayerProfile) => vo
     }
   }
 
+  function syncBody() {
+    if (!scene || !MODEL.ready) return;
+    const key = bodyKey(bodyOf(draft.look, DEFAULTS.modelHeightYd));
+    if (instance?.bodyKey === key) return;
+    if (instance) {
+      scene.remove(instance.holder);
+      instance.dispose();
+      instance = null;
+    }
+    instance = makeModelInstance(DEFAULTS, draft.look);
+    scene.add(instance.holder);
+  }
+
   function renderPreview(dt: number) {
     if (MODEL.failed || !renderer || renderer.getContext().isContextLost()) {
       stage.dataset.state = 'fallback';
@@ -380,19 +414,16 @@ export function createPlayerModal(opts: { onSave: (profile: PlayerProfile) => vo
       loading.hidden = true;
       return;
     }
-    if (!instance && MODEL.ready && MODEL.scene && scene) {
+    if (MODEL.ready && scene && !instance) {
       try {
-        instance = makeModelInstance(DEFAULTS);
-        scene.add(instance.holder);
-        instance.applyLook(draft.look);
-        if (instance.walk) instance.walk.timeScale = 0.55;
+        syncBody();
       } catch {
         stage.dataset.state = 'fallback';
         fig.hidden = false;
         loading.hidden = true;
         return;
       }
-    }
+    } else if (instance) syncBody();
     if (!instance || !camera || !scene) {
       stage.dataset.state = 'loading';
       fig.hidden = true;
@@ -403,8 +434,8 @@ export function createPlayerModal(opts: { onSave: (profile: PlayerProfile) => vo
     fig.hidden = true;
     loading.hidden = true;
     instance.applyLook(draft.look);
-    instance.holder.rotation.y += dt * 0.65;
-    instance.mixer?.update(dt);
+    instance.holder.rotation.y += dt * 0.35;
+    previewJog(instance, dt);
     const w = stage.clientWidth;
     const h = stage.clientHeight;
     if (w < 2 || h < 2) return;
@@ -421,11 +452,8 @@ export function createPlayerModal(opts: { onSave: (profile: PlayerProfile) => vo
     if (raf) cancelAnimationFrame(raf);
     raf = 0;
     if (instance && scene) scene.remove(instance.holder);
-    if (instance) {
-      const mat = instance.sk.material;
-      if (!Array.isArray(mat)) mat.dispose();
-      instance = null;
-    }
+    instance?.dispose();
+    instance = null;
     if (ground) {
       ground.geometry.dispose();
       const mat = ground.material;
@@ -444,6 +472,15 @@ export function createPlayerModal(opts: { onSave: (profile: PlayerProfile) => vo
   card.addEventListener('click', (e) => e.stopPropagation());
   closeBtn.addEventListener('click', () => close());
   saveBtn.addEventListener('click', () => commit());
+  const onSlider = () => {
+    draft.look.height = Number(heightInput.value);
+    draft.look.build = Number(buildInput.value);
+    draft.look.limb = Number(limbInput.value);
+    paint();
+  };
+  heightInput.addEventListener('input', onSlider);
+  buildInput.addEventListener('input', onSlider);
+  limbInput.addEventListener('input', onSlider);
   nameInput.addEventListener('focus', () => { nav.region = 'name'; paint(); });
   nameInput.addEventListener('input', () => { hint.textContent = ''; });
   partsEl.addEventListener('click', (e) => {

@@ -134,16 +134,15 @@ src/sim/                   simulation only — no DOM, no Three.js
 src/modes/                 mode ids and labels (Throw, 1v1 Run, Catch, Coverage, Throw Around)
 src/input/                 gamepad first, keyboard and mouse fallback
 src/net/                   lobby session, snapshots, and the PeerJS transport behind a small interface
-src/render/three/          Three.js renderer, skinned player, procedural poses
+src/render/three/          Three.js renderer, procedural player, poses
 src/render/canvas2d/       flat canvas renderer
 src/render/field.ts        shared field drawing
 src/ui/                    HUD, sprint meter, lil-gui panel, online lobby
-public/assets/             player.glb, base color, ORM map
 ```
 
 The sim steps at a fixed `1/120` second. Random rolls go through an injectable RNG (`src/sim/rng.ts`); the browser uses `Math.random`, tests use a seeded generator. Online play reuses that sim on the host.
 
-The player is a 24-bone humanoid with a walk clip. Poses (throw, catch, sprint, truck, and the rest) are a table of bone offsets blended on top of that clip. If the model cannot load, players fall back to capsules. Jersey, pants, helmet, and skin are recolored from a mask of the base texture, keeping the shading and the jersey number. The Player folder and the online lobby both edit that kit. Offline, CPU players wear team colors and defense stays maroon unless it would match you. Capsules use the jersey color.
+The player is a skeleton built in code: pelvis, spine, chest, neck, head, shoulders, arms, hands, thighs, shins, and feet, with capsule meshes parented to the bones. Poses (throw, catch, run, sprint, cuts, and the rest) are a table of bone offsets, and a speed-synced cycle plants the feet. Jersey, pants, and helmet colors, plus height, build, and limb thickness, come from My Player and travel with the online roster. Offline, CPU players wear team colors and defense stays maroon unless it would match you. The settings panel can still swap the body for a plain capsule.
 
 ## GitHub Pages
 

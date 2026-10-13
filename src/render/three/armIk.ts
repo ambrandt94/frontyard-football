@@ -455,6 +455,16 @@ export function planArmGoals(input: PlanInput): ArmGoals {
   }
 
   const winding = holding && (!!p.visWind || input.charge || (input.mode === 'catch' && input.cmPhase === 'windup' && p.role === 'QB'));
+  if (holding && p.pitchUntil > t && !winding) {
+    const side: ArmSide = p.hand === 'L' ? 'L' : 'R';
+    const shoulder = side === 'L' ? sL : sR;
+    const dest = add(shoulder, add(scale(basis.fwd, 0.42), add(scale(basis.up, 0.04), scale(basis.left, side === 'L' ? 0.05 : -0.05))));
+    const g = empty();
+    if (side === 'L') g.left = goal(dest, 1);
+    else g.right = goal(dest, 1);
+    g.anchor = { side, kind: 'carry' };
+    return g;
+  }
   if (holding) {
     const tuckU = mem.from ? smoothstep((t - mem.tuckT) / TUCK_SEC) : 1;
     const diving = p.diveT >= 0 && tuckU < 0.65;

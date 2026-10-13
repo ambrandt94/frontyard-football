@@ -53,7 +53,7 @@ const BODY = [
     row(`${BACK} ${key('Tab')}`, 'Switch the player you control.'),
     row(`${START} ${key('R')}`, 'Reset the play. In Catch, Start pauses throws. Hold Start, or Back+Start, to hide this card.'),
     row(`${key('H')} ${key('G')}`, 'Hide this card. G hides the settings panel. ` shows the net readout.'),
-    row('My Player', 'Name, jersey, pants, helmet, and skin. In that window the D-pad moves, A selects, and B closes.'),
+    row('My Player', 'Name, jersey, pants, helmet, skin, height, build, and limb size. In that window the D-pad moves, A selects, and B closes.'),
     row(`${key('N')} ${key('M')} ${key('K')}`, 'Next mode (D-pad up). M swaps 3D and the flat field. K cycles QB aim. The 3D view starts as an All-22 angle.'),
     row(`${key('+')} ${key('−')} ${key('C')}`, 'Zoom in and out (wheel does this too, and D-pad down cycles close, medium, wide). Tap C to cycle All-22, Top-down, and Broadcast. Hold C still jogs. The camera buttons sit in the corner.'),
     row(`${key('T')}`, 'Slow motion. Cycles 0.5×, 0.25×, and full speed.'),

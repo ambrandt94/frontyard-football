@@ -9,6 +9,7 @@ import { BULLET_COLOR, LOB_COLOR, PLAYER_COLORS } from '../colors';
 import { makeFieldCanvas } from '../field';
 import type { FieldRenderer, ViewState } from '../types';
 import { buildPixelStadium, CLASSIC_SKY, PIXEL_SKY, type PixelStadium } from './stadium';
+import { bodyKey, bodyOf } from './body';
 import { makeModelInstance, MODEL, type ModelInstance } from './model';
 import { poseModel } from './poses';
 import { orientBall, placeHeldBall, poseArms, sheetActor, type ArmPose } from './armIk';
@@ -403,8 +404,9 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
     if (!sheet && on) {
       sheet = SHEET_POSES.map(([, role]) => {
         const v = makePlayer(PLAYER_COLORS[role] || 0xcccccc);
-        v.model = makeModelInstance(S);
-        v.model.applyLook(aiLook(role, []));
+        const kit = aiLook(role, []);
+        v.model = makeModelInstance(S, kit);
+        v.model.applyLook(kit);
         v.body.add(v.model.holder);
         v.capG.visible = false;
         [v.armL, v.armR, v.callHand, v.callArm, v.sel, v.reach].forEach((m) => { m.visible = false; });
@@ -649,8 +651,14 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
         v.armR.visible = p.stiffArm === 'R';
         v.callHand.visible = v.callArm.visible = p.callT != null && st.t - p.callT < 0.9;
         const look = p.look ?? aiLook(p.role, []);
+        const nextKey = bodyKey(bodyOf(look, S.modelHeightYd));
+        if (v.model && v.model.bodyKey !== nextKey) {
+          v.body.remove(v.model.holder);
+          v.model.dispose();
+          v.model = null;
+        }
         if (useModel && !v.model) {
-          v.model = makeModelInstance(S);
+          v.model = makeModelInstance(S, look);
           v.body.add(v.model.holder);
         }
         if (v.model) {
@@ -672,7 +680,7 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
         v.team.scale.setScalar(S.playerScale);
         v.g.scale.setScalar(S.playerScale);
         v.shadow.scale.setScalar(S.playerScale);
-        const lying = p.diveT >= 0 ? Math.min(1, p.diveT / (S.diveDuration * 0.6)) : p.groundT > 0 ? 1 : 0;
+        const lying = p.diveT >= 0 ? Math.min(1, p.diveT / (S.diveDuration * 0.6)) : p.groundT > 0 ? clamp(p.groundT / 0.5, 0, 1) : 0;
         const lean = p.move && p.move.type === 'truck' ? 0.45 : (p.stretch || 0) * 0.6 + (p.planted && p.planted.falling ? 0.5 : 0);
         v.body.rotation.z = -Math.max(lying * Math.PI / 2 * 0.95, lean);
         v.body.position.y = lying * 0.45;
