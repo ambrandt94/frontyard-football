@@ -85,7 +85,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1a0e; fon
 }
 .lil-gui .host-lock-note { display: none; padding: 6px 8px; background: #3a2e14; color: #ffd54a; font-size: 11px; }
 .lil-gui.is-client .host-lock-note { display: block; }
-#floaters .nameplate { font-size: 13px; font-weight: 700; letter-spacing: 0; }
+#floaters .nameplate { font-size: 13px; font-weight: 800; letter-spacing: 0; background: rgba(8, 16, 12, .88); border: 1px solid rgba(255, 255, 255, .22); border-radius: 999px; padding: 1px 8px 2px; text-shadow: none; }
 #floaters .modechip { font-size: 11px; font-weight: 800; letter-spacing: .08em; background: rgba(8, 16, 12, .72); border: 1px solid rgba(255, 255, 255, .35); border-radius: 999px; padding: 2px 8px; }
 #floaters .modechip.throw { color: #9fd4ff; }
 #floaters .modechip.carry { color: #ffe082; }

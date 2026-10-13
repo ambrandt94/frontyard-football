@@ -58,7 +58,7 @@ export function createPlayerModal(opts: { onSave: (profile: PlayerProfile) => vo
   const title = byId('pm-title');
   const sub = byId('pm-sub');
   const stage = root.querySelector('.pm-stage') as HTMLElement;
-  const canvas = byId('pm-canvas') as HTMLCanvasElement;
+  let canvas = byId('pm-canvas') as HTMLCanvasElement;
   const fig = root.querySelector('.pm-fig') as HTMLElement;
   const loading = root.querySelector('.pm-loading') as HTMLElement;
   const nameInput = byId('pm-name') as HTMLInputElement;
@@ -336,11 +336,7 @@ export function createPlayerModal(opts: { onSave: (profile: PlayerProfile) => vo
     );
     ground.rotation.x = -Math.PI / 2;
     scene.add(ground);
-    try {
-      renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
-      renderer.setClearColor(0x000000, 0);
-    } catch {
-      renderer = null;
+    if (!attachRenderer() && !attachRenderer()) {
       stage.dataset.state = 'fallback';
       fig.hidden = false;
       loading.hidden = true;
@@ -357,8 +353,28 @@ export function createPlayerModal(opts: { onSave: (profile: PlayerProfile) => vo
     raf = requestAnimationFrame(loop);
   }
 
+  function attachRenderer(): boolean {
+    const next = document.createElement('canvas');
+    next.id = 'pm-canvas';
+    canvas.replaceWith(next);
+    canvas = next;
+    try {
+      const nextRenderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+      nextRenderer.setClearColor(0x000000, 0);
+      if (nextRenderer.getContext().isContextLost()) {
+        nextRenderer.dispose();
+        return false;
+      }
+      renderer = nextRenderer;
+      return true;
+    } catch {
+      renderer = null;
+      return false;
+    }
+  }
+
   function renderPreview(dt: number) {
-    if (MODEL.failed || !renderer) {
+    if (MODEL.failed || !renderer || renderer.getContext().isContextLost()) {
       stage.dataset.state = 'fallback';
       fig.hidden = false;
       loading.hidden = true;
