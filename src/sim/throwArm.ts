@@ -1,5 +1,11 @@
 import type { ThrowAction, ThrowArm, Vec2 } from './types';
 
+/**
+ * A full squeeze throws a bullet on the way down, not on the way back up.
+ * Pads often stop around 0.98 and never report 1, so the line sits under that.
+ */
+export const BULLET_SQUEEZE = 0.92;
+
 export interface ThrowTune {
   engage: number;
   release: number;
@@ -37,12 +43,12 @@ function copyLock(lock: Vec2 | null): Vec2 | null {
 
 /**
  * One sim step of the throw arm.
- * The right stick has to be out. RT past the engage mark charges, and the
- * deepest squeeze in that window is the power: a light peak is a touch or
- * lob, a full peak is a bullet. Distance and direction are latched while RT
- * is held, and the release throws that spot. A stick that eases off as the
- * trigger falls does not shorten or cancel the throw. Centering the stick
- * while RT stays down does.
+ * The right stick has to be out. RT past the engage mark charges. Distance and
+ * direction stay latched while RT is held. Releasing a partial squeeze throws
+ * that spot: a light peak is a touch or lob. Reaching a full squeeze throws a
+ * bullet to the latch immediately — the pass does not wait for a release the
+ * pad may never send. A stick that eases off on the way down does not shorten
+ * the throw. Centering the stick while RT stays below a full squeeze cancels.
  */
 export function stepThrowArm(
   arm: ThrowArm,
@@ -67,16 +73,6 @@ export function stepThrowArm(
     if (tr >= arm.peak - 0.03) next.releasing = false;
   }
 
-  if (next.phase === 'charge' && !stickHeld && tr >= tune.release && !next.releasing) {
-    next.phase = 'idle';
-    next.peak = 0;
-    next.releasing = false;
-    next.lock = null;
-    next.wait = tr >= tune.release;
-    next.last = 'cancel';
-    return { arm: next, action: 'cancel', target: null, power: 0 };
-  }
-
   if (next.phase === 'idle') {
     if (stickHeld && !next.wait && prev < tune.engage && tr >= tune.engage) {
       next.phase = 'charge';
@@ -84,14 +80,39 @@ export function stepThrowArm(
       next.peak = tr;
       next.releasing = false;
       next.lock = copyLock(spot);
+    } else {
+      return { arm: next, action: null, target: null, power: 0 };
     }
-    return { arm: next, action: null, target: null, power: 0 };
   }
 
   if (tr > next.peak) next.peak = tr;
   // The release frame's near-zero stick is not stickHeld, and its trigger is
   // already under the release mark, so it cannot replace the latched spot.
   if (stickHeld && tr >= tune.release && spot) next.lock = copyLock(spot);
+  // Fire on the way down. A pad that tops out at 0.98 never reaches 1, and a
+  // squeeze that stays buried never produces the release this used to wait for.
+  if (tr >= BULLET_SQUEEZE) {
+    const target = copyLock(next.lock) || spot;
+    if (target) {
+      next.phase = 'idle';
+      next.peak = 0;
+      next.releasing = false;
+      next.lock = null;
+      next.wait = true;
+      next.last = 'throw';
+      next.power = 1;
+      return { arm: next, action: 'throw', target, power: 1 };
+    }
+  }
+  if (!stickHeld && tr >= tune.release && !next.releasing) {
+    next.phase = 'idle';
+    next.peak = 0;
+    next.releasing = false;
+    next.lock = null;
+    next.wait = true;
+    next.last = 'cancel';
+    return { arm: next, action: 'cancel', target: null, power: 0 };
+  }
   if (tr < tune.release) {
     const held = t - next.since;
     const power = throwPower(next.peak, tune.engage);

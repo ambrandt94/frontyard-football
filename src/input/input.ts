@@ -4,6 +4,7 @@ import { markStickDirty, shapeStick, stickCal, tickStickCal, type StickReading }
 import { blankInput, type SimInput } from '../sim/types';
 import { rightStickAims } from './aim';
 import { freshTrigger, stepTrigger } from './trigger';
+import { BULLET_SQUEEZE } from '../sim/throwArm';
 
 export interface InputMeta {
   switch: boolean;
@@ -208,7 +209,8 @@ export function createInput(S: Settings, view: HTMLElement): InputController {
       const now = performance.now();
       const mouseHeld = mouse.down || mouse.released !== null;
       let mouseT = 0;
-      if (mouse.down) mouseT = keys.has('KeyF') ? 1 : Math.min(0.99, Math.max(S.rtEngage + 0.08, 0.55));
+      // F stays just under a full squeeze, so the mouse bullet still throws on release.
+      if (mouse.down) mouseT = keys.has('KeyF') ? BULLET_SQUEEZE - 0.01 : Math.min(0.99, Math.max(S.rtEngage + 0.08, 0.55));
       const trigger = Math.max(inp.trigger, mouseT);
       const pulled = stepTrigger(rtLatch, trigger, now, prevRtv, {
         engage: S.rtEngage,

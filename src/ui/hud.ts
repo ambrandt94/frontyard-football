@@ -25,7 +25,7 @@ export function sprintMeter(boost: number, hold: number, fast: boolean, S: Setti
 function stickRow(st: SimState): string {
   const id = st.ball.state === 'held' ? st.ball.holder : null;
   const p = id ? st.players[id] : undefined;
-  if (!p || (p.role !== 'QB' && st.mode !== 'free')) return '';
+  if (!p || (p.role !== 'QB' && st.mode !== 'free' && p.stickMode !== 'carry')) return '';
   const mode = p.stickMode === 'carry' ? 'CARRY' : 'THROW';
   const pitching = (p.pitchUntil || 0) > st.t;
   return `<div class="row" id="stick-mode"><span>Stick</span><b>${mode}${pitching ? ' · PITCH' : ''}</b></div>`;
@@ -205,7 +205,7 @@ export function updateFloaters(opts: {
     html += `<div style="left:${s.x}px;top:${s.y - age * 40}px;color:${f.color};opacity:${clamp(1.3 - age, 0, 1)}">${esc(f.text)}</div>`;
   }
   for (const p of Object.values(st.players)) {
-    const showStick = st.ball.holder === p.id && st.ball.state === 'held' && (p.role === 'QB' || st.mode === 'free');
+    const showStick = st.ball.holder === p.id && st.ball.state === 'held' && (p.role === 'QB' || st.mode === 'free' || p.stickMode === 'carry');
     if (showStick) {
       const s = renderer.fieldToScreen(p.x, p.y, 3.2);
       const carry = p.stickMode === 'carry';

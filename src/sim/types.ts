@@ -169,6 +169,14 @@ export interface Player {
   dove: boolean;
   /** What the right stick does while this player has the ball. */
   stickMode: 'throw' | 'carry';
+  /**
+   * Host sim only. True once the QB has been behind the line and can auto-switch
+   * to CARRY on the next crossing. False while he is already past it, so a
+   * manual flip back to THROW sticks until he drops behind the line again.
+   */
+  losArmed?: boolean;
+  /** Host sim only. Previous RT sample for the pitch-window edge. */
+  pitchPrev?: number;
   /** Sim time the QB pitch window closes. 0 when it is shut. */
   pitchUntil: number;
   /** Flick captured inside the pitch window. */

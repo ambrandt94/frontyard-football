@@ -165,7 +165,10 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     if (st.play.phase !== 'pre') return;
     st.play.phase = 'live'; st.play.snapT = st.t; st.ai.wr.wp = routeWaypoints(st.route); st.ai.wr.wpi = 0;
     if (st.ai.qb) { st.ai.qb.holdMin = undefined; st.ai.qb.readyAt = undefined; st.ai.qb.clockRoute = undefined; }
-    if (st.players.qb) st.players.qb.stickMode = 'throw';
+    if (st.players.qb) {
+      st.players.qb.stickMode = 'throw';
+      st.players.qb.losArmed = true;
+    }
     say('HIKE', '#9fe39f');
   }
   function endPlay(result: string) { if (st.play.phase !== 'over') { st.play.phase = 'over'; st.play.endT = st.t; st.play.result = result; } st.stats.last = result; }
@@ -682,10 +685,38 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     if (slotInputs) return !!slotInputs[id];
     return st.controlled === id;
   }
+  function holdingBall(p: Player) {
+    return st.ball.holder === p.id && st.ball.state === 'held' && st.play.phase !== 'over';
+  }
+  /** RT plus a neutral stick, then a flick. Every CARRY ball carrier, and the QB in THROW. */
   function usesFlickPitch(p: Player) {
-    if (st.mode === 'run' || st.carry) return false;
-    if (st.mode === 'free') return st.ball.holder === p.id && st.ball.state === 'held';
-    return p.role === 'QB' && st.ball.holder === p.id && st.ball.state === 'held';
+    if (!holdingBall(p)) return false;
+    if (st.mode === 'free') return true;
+    if (p.stickMode === 'carry') return true;
+    if (st.mode === 'run') return p.role === 'RB' || p.role === 'TB';
+    if (st.carry) return true;
+    return p.role === 'QB';
+  }
+  function scrimmageMode() {
+    return st.mode === 'throw' || st.mode === 'coverage' || st.mode === 'catch';
+  }
+  /** Host decides. Crossing the line puts the QB in CARRY. Stepping back does not undo it. */
+  function crossScrimmage(p: Player) {
+    if (!scrimmageMode() || p.role !== 'QB' || !holdingBall(p)) return;
+    if (p.y <= LOS_Y) {
+      p.losArmed = true;
+      return;
+    }
+    if (p.stickMode !== 'throw' || p.losArmed === false) {
+      p.losArmed = false;
+      return;
+    }
+    p.stickMode = 'carry';
+    p.losArmed = false;
+    if (st.throwArm.phase === 'charge') {
+      st.throwArm = { ...freshThrowArm(), prev: st.throwArm.prev, last: 'cancel' };
+    }
+    floatText('CARRY', p.x, p.y + 1.6, '#ffe082');
   }
   function applyStickMode(p: Player, inp: SimInput) {
     if (!inp.modeToggle || st.ball.holder !== p.id) return;
@@ -696,11 +727,13 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     floatText(p.stickMode === 'throw' ? 'THROW' : 'CARRY', p.x, p.y + 1.6, p.stickMode === 'throw' ? '#9fd4ff' : '#ffe082');
   }
   function openPitchWindow(p: Player, inp: SimInput) {
-    if (!usesFlickPitch(p) || st.play.phase === 'over') return;
+    if (!usesFlickPitch(p)) return;
+    const tr = inp.trigger || 0;
+    const prev = p.pitchPrev || 0;
+    p.pitchPrev = tr;
     if (p.pitchUntil > st.t) return;
     const tune = throwTune(S);
-    const tr = inp.trigger || 0;
-    if (!inp.stickHeld && st.throwArm.prev < tune.engage && tr >= tune.engage) {
+    if (!inp.stickHeld && prev < tune.engage && tr >= tune.engage) {
       p.pitchUntil = st.t + Math.max(0.05, S.pitchWindow);
       p.pitchFlick = null;
       floatText('PITCH', p.x, p.y + 1.4, '#ffe082');
@@ -714,7 +747,7 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     if (d > 0.35) { inp.mx = dx / d; inp.my = dy / d; inp.sprint = true; }
     return inp;
   }
-  /** Release throws. A neutral stick cancels. Runs on the host sim so every peer sees one result. */
+  /** Release throws, or a bullet the moment RT is buried. CARRY never throws: RT there is the pitch. The host sim decides, so every peer sees one result. */
   function runHumanThrow(inp: SimInput, thrower: Player) {
     const holding = st.ball.state === 'held' && st.ball.holder === thrower.id && st.play.phase !== 'over';
     if (!holding) {
@@ -722,7 +755,8 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
       return;
     }
     if (thrower.stickMode === 'carry' || thrower.pitchUntil > st.t) {
-      st.throwArm = { ...freshThrowArm(), prev: inp.trigger || 0 };
+      const charged = st.throwArm.phase === 'charge' || st.throwArm.last === 'cancel';
+      st.throwArm = { ...freshThrowArm(), prev: inp.trigger || 0, last: charged ? 'cancel' : 'none' };
       return;
     }
     if (!inp.stickHeld && st.throwArm.phase !== 'charge') {
@@ -773,12 +807,14 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     if (hb) updateMovement(hb, { ...(st.play.phase === 'pre' ? blankInput() : aiPitchBack(hb, qb, -1)), rb: false }, dt);
     if (df && inputs.df) stepDefenderCoverage(df, inputs.df, w0, dt);
 
+    if (qb) crossScrimmage(qb);
+
     if (st.ball.holder === 'qb') {
       if (qbIsHuman()) {
         runHumanThrow(inputs.qb, qb);
-        if (st.ball.holder === 'qb' && st.ball.state === 'held' && inputs.qb.throwPower !== null) doThrow(st.aimQB || { x: qb.x, y: qb.y + 12 }, inputs.qb.throwPower, true);
-      } else if (!qbIsHuman() && (st.mode === 'coverage' || (st.mode === 'throw' && S.throwDefender && !wrIsHuman()))) maybeThrowCoverage();
-      else if (!qbIsHuman() && st.mode === 'throw' && st.play.phase === 'live' && st.play.snapT != null && ((wrIsHuman() && inputs.wr.start) || st.t - st.play.snapT > S.autoThrowDelay || (st.callAt != null && st.t >= st.callAt))) aiQBThrow();
+        if (qb.stickMode !== 'carry' && st.ball.holder === 'qb' && st.ball.state === 'held' && inputs.qb.throwPower !== null) doThrow(st.aimQB || { x: qb.x, y: qb.y + 12 }, inputs.qb.throwPower, true);
+      } else if (qb.stickMode !== 'carry' && (st.mode === 'coverage' || (st.mode === 'throw' && S.throwDefender && !wrIsHuman()))) maybeThrowCoverage();
+      else if (qb.stickMode !== 'carry' && st.mode === 'throw' && st.play.phase === 'live' && st.play.snapT != null && ((wrIsHuman() && inputs.wr.start) || st.t - st.play.snapT > S.autoThrowDelay || (st.callAt != null && st.t >= st.callAt))) aiQBThrow();
     }
     const wi = inputs.wr, w = st.players.wr;
     const airNow = st.ball.state === 'air' && !st.ball.pitch;
@@ -1108,6 +1144,7 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     plantStretch(w, wi);
     updateMovement(w, { ...wi, rb: false }, dt);
     updateMovement(qb, blankInput(), dt);
+    crossScrimmage(qb);
     const airNow = b.state === 'air';
     if (wi.y && airNow) startAttempt(w, 'two'); else if (wi.rt && airNow) startAttempt(w, 'one'); else if (wi.b) startAttempt(w, 'bat');
     ballUpdate(dt);
@@ -1134,6 +1171,8 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     st.players.df.facing = -Math.PI / 2;
     st.trailSide = cx > FIELD_W / 2 ? 1 : -1;
     if (S.trailingBack) st.players.tb = addRunState(newPlayer('tb', 'TB', cx - st.trailSide * S.trailWidth, cy - S.trailDepth));
+    st.players.rb.stickMode = 'carry';
+    if (st.players.tb) st.players.tb.stickMode = 'carry';
     st.pendingSwap = null;
     st.ball = { state: 'held', holder: 'rb', x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, arc: [], landing: null, aimed: null, throwT: 0, resolved: false, gave: false, power: 0 };
     st.play = { phase: 'pre', t0: st.t, snapT: null, endT: null };
@@ -1661,6 +1700,7 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
   function scoringLine() { return st.carry?.goalY ?? GOAL_Y; }
   function beginCarry(p: Player) {
     addRunState(p);
+    p.stickMode = 'carry';
     p.hand = p.hand || 'R';
     const returning = p.role === 'DF';
     let goalY = GOAL_Y;
@@ -1744,6 +1784,7 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
   /** Shared 1v1 carrier update: moves, shoulders, hurdle/dive, pursuer, and how the play ends. */
   function advanceCarrier(dt: number, c: Player, d: Player | undefined, ci: SimInput, di: SimInput) {
     const goalY = scoringLine();
+    openPitchWindow(c, ci);
     flickCheck(c, ci, true); shoulderButtons(c, ci); pitchUpdate(c, true);
     if (c.handSwitchT > 0) c.handSwitchT -= dt;
     updateMovement(c, { ...ci, a: false, x: false, rb: false }, dt);

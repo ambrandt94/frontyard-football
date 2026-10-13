@@ -58,9 +58,9 @@ const BODY = [
     row(`${key('T')}`, 'Slow motion. Cycles 0.5×, 0.25×, and full speed.'),
   ].join('')),
   section('qb', 'Quarterback', [
-    row(`${R3} ${key('L')}`, 'Flip the right stick. THROW aims and throws. CARRY jukes, spins, sidesteps, and trucks. The QB starts in THROW. The chip by the player shows which one.'),
+    row(`${R3} ${key('L')}`, 'Flip the right stick. THROW aims and throws. CARRY jukes, spins, sidesteps, and trucks. The QB starts in THROW. Crossing the line of scrimmage with the ball switches him to CARRY, and stepping back does not switch him back. The chip by the player shows which one.'),
     row(`${RS} ${key('Mouse')} ${key('K')}`, 'Aim while you hold the stick. K switches Absolute+ (angle and distance) and Direction charge (the stick picks the line, RT slides the distance). A small ease-off keeps the aim. Letting the stick go back to center while RT is still held cancels the wind-up, and nothing is thrown.'),
-    row(`${RT}`, 'With the stick held, squeeze to charge the distance and release to throw that spot. The deepest squeeze in the charge is the one that counts: a light squeeze is a touch or lob, and a full squeeze is a bullet. A quick brush does nothing. With the stick centered, a squeeze opens a short pitch window. Flick the stick to choose the direction. A gentle flick is a little short, a fast flick a little long. Miss the window and nothing happens.'),
+    row(`${RT}`, 'With the stick held, squeeze to charge the distance. Release to throw that spot: a light squeeze is a touch or a lob. Burying the trigger throws a bullet to that spot immediately. A quick brush does nothing. With the stick centered, a squeeze opens a short pitch window. Flick the stick to choose the direction. A gentle flick is a little short, a fast flick a little long. Miss the window and nothing happens. In CARRY, that centered squeeze only pitches.'),
     row(`${key('Mouse')} ${key('F')}`, 'Hold the left button and release for a touch. Hold F during that press for a bullet. F alone, with the arrows centered, opens the pitch window.'),
   ].join('')),
   section('receiver', 'Receiver', [
@@ -74,7 +74,8 @@ const BODY = [
   section('carrier', 'Ball carrier', [
     row(`${RS} ${key('Arrows')}`, 'Flick with your run: sideways sidesteps, up trucks, down jukes, diagonals spin.'),
     row(`${A} ${X}`, 'Hurdle, or dive forward.'),
-    row(`${LB} ${RB}`, 'Tap to switch hands. Hold to stiff-arm. Double-tap to pitch. The quarterback pitches with RT and a flick instead.'),
+    row(`${LB} ${RB}`, 'Tap to switch hands. Hold to stiff-arm.'),
+    row(`${RT} ${RS}`, 'In CARRY, squeeze RT with the stick centered to open the pitch window, then flick. The receiver after a catch, the running back, and the QB past the line all pitch this way. A full squeeze does not throw.'),
   ].join('')),
   section('defender', 'Defender', [
     row(`${LT} ${key('Q')}`, 'Break down and square up. A lunge from here is shorter and wraps more often.'),

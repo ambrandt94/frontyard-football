@@ -12,7 +12,7 @@ import { aiLook, loadLook } from './sim/look';
 import { createSim } from './sim/sim';
 import { freshThrowArm, stepThrowArm, throwPower, throwTune } from './sim/throwArm';
 import type { SimInput, ThrowPhase } from './sim/types';
-import { AIM_MODE_LABEL, aimModeOf, createAimState, nextAimMode, resampleArc, stepAim } from './input/aim';
+import { AIM_MODE_LABEL, aimModeOf, clearAimCharge, createAimState, nextAimMode, resampleArc, stepAim } from './input/aim';
 import { createInput } from './input/input';
 import { updateStickHud } from './ui/stickHud';
 import type { PolledInput } from './input/input';
@@ -299,6 +299,16 @@ function frame(now: number) {
   } else {
     acc = 0;
     carry = null;
+  }
+  if (thrower && thrower.stickMode === 'carry') {
+    clearAimCharge(aimState);
+    inp.aim = null;
+    inp.charge = null;
+    if (st.ball.holder === thrower.id) {
+      reticle = null;
+      aimGuide = null;
+      previewPoint = null;
+    }
   }
 
   const b = st.ball;

@@ -158,6 +158,16 @@ export interface AimState {
   latchOn: boolean;
 }
 
+/** Drop a charge when the QB is put into CARRY. The next squeeze has to start over. */
+export function clearAimCharge(state: AimState) {
+  state.chargeOn = false;
+  state.chargeT = 0;
+  state.latchOn = false;
+  state.chargeBlock = true;
+  state.holding = false;
+  state.peakMag = 0;
+}
+
 export function createAimState(): AimState {
   return {
     dist: 12,
