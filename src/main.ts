@@ -9,13 +9,13 @@ import { PLAYER_COLORS } from './render/colors';
 import { MODE_LABEL, MP_MODE_IDS, nextMode, type ModeId } from './modes';
 import { clamp, rad } from './sim/math';
 import { aiLook, loadLook } from './sim/look';
+import { loadProfile } from './sim/profile';
 import { createSim } from './sim/sim';
 import { freshThrowArm, stepThrowArm, throwPower, throwTune } from './sim/throwArm';
-import type { SimInput, ThrowPhase } from './sim/types';
+import { blankInput, type SimInput, type ThrowPhase } from './sim/types';
 import { AIM_MODE_LABEL, aimModeOf, clearAimCharge, createAimState, nextAimMode, resampleArc, stepAim } from './input/aim';
-import { createInput } from './input/input';
+import { createInput, type InputMeta, type PolledInput } from './input/input';
 import { updateStickHud } from './ui/stickHud';
-import type { PolledInput } from './input/input';
 import { createCanvasRenderer } from './render/canvas2d/renderer';
 import { createThreeRenderer } from './render/three/renderer';
 import { loadPlayerModel, MODEL } from './render/three/model';
@@ -24,6 +24,7 @@ import { createHelp } from './ui/help';
 import { updateFloaters, updateHud } from './ui/hud';
 import { createLobby } from './ui/lobby';
 import { createPanel, toast } from './ui/panel';
+import { createPlayerModal } from './ui/playerModal';
 import { createSession, type NetSession } from './net/session';
 
 const S: Settings = loadSettings(browserStore());
@@ -58,7 +59,6 @@ const panel = createPanel({
   roomPhase: () => session?.phase ?? 'idle',
   onHostSettings: () => session?.pushSettings(),
   onLobbyMode: (m) => session?.setMode(m),
-  onLook: (look) => session?.setLook(look),
 });
 const { gui, sandbox } = panel;
 
@@ -147,17 +147,42 @@ let viewState: ViewState | null = null;
 let carry: PolledInput | null = null;
 
 function paintLocalBodies() {
-  const mine = loadLook();
+  const profile = loadProfile();
+  const mine = profile?.look ?? loadLook();
   const jerseys = [mine.jersey];
   for (const p of Object.values(st.players)) {
     if (p.id === st.controlled) {
       p.look = { ...mine };
       p.tint = mine.jersey;
+      if (profile) p.name = profile.name;
+      else delete p.name;
     } else {
       delete p.tint;
+      delete p.name;
       p.look = aiLook(p.role, jerseys);
     }
   }
+}
+
+function silencePlay(inp: PolledInput, meta: InputMeta) {
+  Object.assign(inp, blankInput());
+  inp.aimStick = null;
+  inp.aimSpec = { mode: 'stick', offset: { x: 0, y: 0 } };
+  meta.switch = false;
+  meta.reset = false;
+  meta.start = false;
+  meta.routeDelta = 0;
+  meta.route = null;
+  meta.toggleRenderer = false;
+  meta.toggleHelp = false;
+  meta.toggleGui = false;
+  meta.cycleTime = false;
+  meta.mode = false;
+  meta.posePreview = false;
+  meta.cycleAim = false;
+  meta.zoom = 0;
+  meta.cycleCam = false;
+  meta.zoomStop = false;
 }
 
 function must(id: string): HTMLElement {
@@ -172,6 +197,7 @@ function frame(now: number) {
   const polled = input.poll();
   const inp = polled.inp;
   const meta = polled.meta;
+  if (playerModal.isOpen()) silencePlay(inp, meta);
   if (carry) {
     for (const k of ['sprint', 'y', 'rt', 'rb', 'a', 'x', 'b', 'start', 'lbHeld', 'rbHeld'] as const) inp[k] = inp[k] || carry[k];
     if (inp.throwPower === null) inp.throwPower = carry.throwPower;
@@ -532,6 +558,7 @@ window.__sandbox = {
 };
 
 let lobby: ReturnType<typeof createLobby>;
+let didBoot = false;
 session = createSession({
   sim,
   S,
@@ -541,11 +568,26 @@ session = createSession({
     panel.refresh();
   },
 });
-lobby = createLobby({ session });
+const playerModal = createPlayerModal({
+  onSave(profile) {
+    session.setIdentity(profile.name, profile.look);
+    paintLocalBodies();
+    if (!didBoot) {
+      didBoot = true;
+      lobby.boot();
+    }
+  },
+});
+lobby = createLobby({ session, onEditPlayer: () => playerModal.open() });
 window.__net = {
   setInput(partial) { window.__netInput = partial; },
   session,
 };
-lobby.boot();
+if (loadProfile()) {
+  didBoot = true;
+  lobby.boot();
+} else {
+  playerModal.open({ required: true });
+}
 
 requestAnimationFrame(frame);

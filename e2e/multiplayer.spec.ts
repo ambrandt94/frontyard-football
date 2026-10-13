@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { expect, test, type Browser, type Page } from '@playwright/test';
+import { installTestProfile, useName } from './profile';
 import { PeerServer } from 'peer';
 
 const APP = 'http://127.0.0.1:5173/frontyard-football/';
@@ -26,8 +27,8 @@ test('host and two clients play a pass, then a disconnect falls back to AI', asy
   const wr = await open(browser);
   const spec = await open(browser);
   try {
+    await useName(host.page, 'Host');
     await host.page.click('#net-open');
-    await host.page.fill('#net-name', 'Host');
     await host.page.click('#net-host');
     await expect(host.page.locator('#net-code-label')).toHaveText(/^[A-Z2-9]{4}$/);
     const code = (await host.page.locator('#net-code-label').innerText()).trim();
@@ -106,8 +107,8 @@ test('a client cannot change host tuning, and a host change arrives', async ({ b
   const host = await open(browser);
   const guest = await open(browser);
   try {
+    await useName(host.page, 'Host');
     await host.page.click('#net-open');
-    await host.page.fill('#net-name', 'Host');
     await host.page.click('#net-host');
     await expect(host.page.locator('#net-code-label')).toHaveText(/^[A-Z2-9]{4}$/);
     const code = (await host.page.locator('#net-code-label').innerText()).trim();
@@ -171,8 +172,8 @@ test('throw around keeps names and rings through passes and mode changes', async
     await catcher.page.evaluate((look) => window.__net!.session.setLook(look), kits.Catcher);
     await dee.page.evaluate((look) => window.__net!.session.setLook(look), kits.Dee);
 
+    await useName(host.page, 'Host');
     await host.page.click('#net-open');
-    await host.page.fill('#net-name', 'Host');
     await host.page.click('#net-host');
     await expect(host.page.locator('#net-code-label')).toHaveText(/^[A-Z2-9]{4}$/);
     const code = (await host.page.locator('#net-code-label').innerText()).trim();
@@ -383,8 +384,8 @@ async function shot(page: Page, selector: string, name: string) {
 }
 
 async function join(page: Page, code: string, name: string) {
+  await useName(page, name);
   await page.click('#net-open');
-  await page.fill('#net-name', name);
   await page.fill('#net-code', code);
   await page.click('#net-join');
   await expect(page.locator('#net-code-label')).toHaveText(code);
@@ -395,6 +396,7 @@ async function open(browser: Browser) {
   await ctx.addInitScript(() => {
     window.__netSignal = { host: '127.0.0.1', port: 9000, path: '/peerjs', secure: false };
   });
+  await ctx.addInitScript(installTestProfile);
   const page = await ctx.newPage();
   const errors: string[] = [];
   page.on('pageerror', (err) => errors.push('pageerror: ' + err.message));

@@ -2,9 +2,7 @@ import { MP_MODE_IDS, MODE_LABEL, type ModeId } from '../modes';
 import type { NetSession } from '../net/session';
 import { slotsFor } from '../net/slots';
 import { hexCss } from '../sim/look';
-import { mountLookEditor } from './lookEditor';
-
-const NAME_KEY = 'tdfb.sandbox.netname';
+import { loadProfile } from '../sim/profile';
 
 export interface Lobby {
   open(): void;
@@ -13,7 +11,7 @@ export interface Lobby {
   boot(): void;
 }
 
-export function createLobby(opts: { session: NetSession }): Lobby {
+export function createLobby(opts: { session: NetSession; onEditPlayer: () => void }): Lobby {
   const { session } = opts;
   const root = document.createElement('div');
   root.id = 'lobby';
@@ -23,7 +21,7 @@ export function createLobby(opts: { session: NetSession }): Lobby {
       <h2>Online</h2>
       <div id="lobby-setup">
         <p class="hint">Host a room or join with a code. 2–6 players. Catch stays single-player.</p>
-        <label>Your name <input id="net-name" maxlength="16" autocomplete="nickname"></label>
+        <p class="playing-as">Playing as <b id="net-as"></b> <button id="net-edit" type="button" class="ghost">My Player</button></p>
         <div class="row">
           <button id="net-host" type="button">Host</button>
           <input id="net-code" maxlength="4" placeholder="Code" autocomplete="off">
@@ -33,7 +31,6 @@ export function createLobby(opts: { session: NetSession }): Lobby {
       </div>
       <div id="lobby-room" class="hidden">
         <div class="lobby-top">
-          <div id="lobby-look"></div>
           <div class="lobby-id">
             <div class="code-line">Room <b id="net-code-label"></b>
               <button id="net-copy" type="button">Copy link</button>
@@ -61,7 +58,6 @@ export function createLobby(opts: { session: NetSession }): Lobby {
       <p id="net-status"></p>
     </div>`;
   document.body.appendChild(root);
-  mountLookEditor(byId('lobby-look'), { onChange: (look) => session.setLook(look) });
 
   const openBtn = document.createElement('button');
   openBtn.id = 'net-open';
@@ -88,7 +84,6 @@ export function createLobby(opts: { session: NetSession }): Lobby {
   document.body.appendChild(chips);
   let chipsCollapsed = false;
 
-  const nameEl = mustInput('net-name');
   const codeEl = mustInput('net-code');
   const linkEl = mustInput('net-link');
   const modeEl = document.getElementById('net-mode') as HTMLSelectElement;
@@ -101,7 +96,6 @@ export function createLobby(opts: { session: NetSession }): Lobby {
   let chipKey = '';
   let opened = false;
 
-  nameEl.value = localStorage.getItem(NAME_KEY) || '';
   for (const id of MP_MODE_IDS) {
     const opt = document.createElement('option');
     opt.value = id;
@@ -116,7 +110,13 @@ export function createLobby(opts: { session: NetSession }): Lobby {
     byId('lobby-ended').classList.toggle('hidden', !ended);
   }
 
+  function playingAs() {
+    return loadProfile()?.name || 'Player';
+  }
+
   function update() {
+    const as = document.getElementById('net-as');
+    if (as) as.textContent = playingAs();
     const rejoin = session.phase === 'play' && !session.mySlot;
     const inRoom = session.phase === 'lobby' || rejoin;
     if (session.phase === 'ended') {
@@ -132,7 +132,7 @@ export function createLobby(opts: { session: NetSession }): Lobby {
       if (document.activeElement !== linkEl) linkEl.value = session.shareUrl;
       const you = document.getElementById('net-you');
       const mine = session.players.find((p) => p.peerId === session.myPeerId);
-      if (you) you.textContent = mine?.name || nameEl.value || 'You';
+      if (you) you.textContent = mine?.name || playingAs();
       const host = session.role === 'host';
       byId('net-mode-wrap').classList.toggle('hidden', !host);
       byId('net-count-wrap').classList.toggle('hidden', !host || session.mode !== 'free');
@@ -277,15 +277,16 @@ export function createLobby(opts: { session: NetSession }): Lobby {
     opened = false;
     root.classList.add('hidden');
   });
+  root.querySelector('#net-edit')!.addEventListener('click', () => opts.onEditPlayer());
   root.querySelector('#net-host')!.addEventListener('click', () => {
-    const name = nameEl.value;
-    localStorage.setItem(NAME_KEY, name);
-    void session.host(name).catch(() => update());
+    const profile = loadProfile();
+    if (!profile) { opts.onEditPlayer(); return; }
+    void session.host(profile.name).catch(() => update());
   });
   root.querySelector('#net-join')!.addEventListener('click', () => {
-    const name = nameEl.value;
-    localStorage.setItem(NAME_KEY, name);
-    void session.join(codeEl.value, name).catch(() => update());
+    const profile = loadProfile();
+    if (!profile) { opts.onEditPlayer(); return; }
+    void session.join(codeEl.value, profile.name).catch(() => update());
   });
   root.querySelector('#net-leave')!.addEventListener('click', () => session.leave());
   root.querySelector('#net-back')!.addEventListener('click', () => session.leave());
@@ -322,13 +323,13 @@ export function createLobby(opts: { session: NetSession }): Lobby {
     boot() {
       const room = new URLSearchParams(location.search).get('room');
       if (!room) return;
-      const name = localStorage.getItem(NAME_KEY) || 'Guest';
-      nameEl.value = name;
+      const profile = loadProfile();
+      if (!profile) return;
       opened = true;
       root.classList.remove('hidden');
       show(false, false, false);
       statusEl.textContent = 'Joining ' + room + '…';
-      void session.join(room, name).catch(() => update());
+      void session.join(room, profile.name).catch(() => update());
     },
   };
 }

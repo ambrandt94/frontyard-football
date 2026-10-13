@@ -11,6 +11,7 @@ import { assignSlots } from './roster';
 import { readSignal, roomLink } from './signal';
 import { defaultSlot, makeRoomCode, slotsFor } from './slots';
 import { aiLook, loadLook, parseLook, saveLook, type Look } from '../sim/look';
+import { loadProfile, saveProfile } from '../sim/profile';
 import { applyGameplay, gameplaySettings, iceServers } from './sync';
 import { BTN, type InputFrame, type NetMsg, type NetTransport, type RosterName, type Seat, type Snapshot } from './types';
 
@@ -61,6 +62,8 @@ export interface NetSession {
   pushSettings(): void;
   /** Jersey, pants, helmet, and skin. Saved here and sent with the roster. */
   setLook(look: Look): void;
+  /** Name and kit together. Updates the local profile and, in a room, the name tag. */
+  setIdentity(name: string, look: Look): void;
 }
 
 export function createSession(opts: { sim: Sim; S: Settings; onChange: () => void }): NetSession {
@@ -407,14 +410,16 @@ export function createSession(opts: { sim: Sim; S: Settings; onChange: () => voi
     if (msg.t === 'lobby') {
       if (typeof msg.v === 'number' && msg.v < rosterV) return;
       const sameVersion = typeof msg.v === 'number' && msg.v === rosterV;
-      const kept = lookAhead && sameVersion ? seatByPeer(myPeerId())?.look : undefined;
+      const keptLook = lookAhead && sameVersion ? seatByPeer(myPeerId())?.look : undefined;
+      const keptName = lookAhead && sameVersion ? seatByPeer(myPeerId())?.name : undefined;
       if (typeof msg.v === 'number' && msg.v > rosterV) lookAhead = false;
       if (typeof msg.v === 'number') rosterV = msg.v;
       mode = msg.mode;
       freeCount = msg.freeCount;
       seats.splice(0, seats.length, ...msg.players.map((s) => ({ ...s, look: parseLook(s.look) })));
       const mine = seatByPeer(myPeerId());
-      if (kept && mine) mine.look = kept;
+      if (keptLook && mine) mine.look = keptLook;
+      if (keptName && mine) mine.name = keptName;
       mySlot = mine?.slot || '';
       if (phase === 'play' && st.mode === mode) overlayRoster();
       emit();
@@ -596,7 +601,7 @@ export function createSession(opts: { sim: Sim; S: Settings; onChange: () => voi
         emit();
         throw lastErr instanceof Error ? lastErr : new Error(status);
       }
-      seats.splice(0, seats.length, { peerId: myPeerId(), name: myName, slot: defaultSlot(mode), ping: 0, host: true, look: loadLook() });
+      seats.splice(0, seats.length, { peerId: myPeerId(), name: myName, slot: defaultSlot(mode), ping: 0, host: true, look: loadProfile()?.look ?? loadLook() });
       mySlot = seats[0].slot;
       rosterV = 1;
       phase = 'lobby';
@@ -618,7 +623,7 @@ export function createSession(opts: { sim: Sim; S: Settings; onChange: () => voi
       try {
         await transport.startClient(iceServers(S), readSignal());
         await transport.connect(hostPeerId);
-        send(hostPeerId, { t: 'hello', name: myName, look: loadLook() });
+        send(hostPeerId, { t: 'hello', name: myName, look: loadProfile()?.look ?? loadLook() });
       } catch (err) {
         transport.close();
         transport = null;
@@ -747,7 +752,9 @@ export function createSession(opts: { sim: Sim; S: Settings; onChange: () => voi
     },
     setLook(next: Look) {
       const look = parseLook(next);
-      saveLook(look);
+      const profile = loadProfile();
+      if (profile) saveProfile({ name: profile.name, look });
+      else saveLook(look);
       const mine = seatByPeer(myPeerId());
       if (mine) mine.look = look;
       if (role === 'host' && (phase === 'lobby' || phase === 'play')) {
@@ -757,6 +764,24 @@ export function createSession(opts: { sim: Sim; S: Settings; onChange: () => voi
         lookAhead = true;
         if (phase === 'play') overlayRoster();
         send(hostPeerId, { t: 'look', look });
+      }
+      emit();
+    },
+    setIdentity(name: string, look: Look) {
+      const profile = saveProfile({ name, look });
+      myName = profile.name;
+      const mine = seatByPeer(myPeerId());
+      if (mine) {
+        mine.name = profile.name;
+        mine.look = profile.look;
+      }
+      if (role === 'host' && (phase === 'lobby' || phase === 'play')) {
+        if (phase === 'play') overlayRoster();
+        publishRoster();
+      } else if (role === 'client' && hostPeerId) {
+        lookAhead = true;
+        if (phase === 'play') overlayRoster();
+        send(hostPeerId, { t: 'hello', name: myName, look: profile.look });
       }
       emit();
     },

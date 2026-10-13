@@ -21,10 +21,8 @@ import { bindSliderBands } from './sliderBands';
 import { timeScaleOf } from '../config/timeScale';
 import { applyControlPreset, builtinPreset, BUILTIN_PRESETS } from '../config/presets';
 import { MODE_LABEL, MODE_LABELS, modeFromLabel, MP_MODE_IDS, type ModeId } from '../modes';
-import type { Look } from '../sim/look';
 import type { Sim } from '../sim/sim';
 import type { FieldRenderer } from '../render/types';
-import { mountLookEditor } from './lookEditor';
 import { startStickCalibrate, toggleStickDebug } from '../input/stick';
 
 export interface SandboxUi {
@@ -65,7 +63,6 @@ export function createPanel(opts: {
   roomPhase?: () => 'idle' | 'lobby' | 'play' | 'ended';
   onHostSettings?: () => void;
   onLobbyMode?: (mode: ModeId) => void;
-  onLook?: (look: Look) => void;
 }) {
   const { S, sim } = opts;
   const st = sim.state;
@@ -225,11 +222,6 @@ export function createPanel(opts: {
   };
 
   const gui = new GUI({ title: 'Sandbox settings' });
-  const fplayer = gui.addFolder('Player');
-  const lookHolder = document.createElement('div');
-  lookHolder.className = 'look-panel';
-  (fplayer as unknown as { $children: HTMLElement }).$children.appendChild(lookHolder);
-  mountLookEditor(lookHolder, { onChange: (look) => opts.onLook?.(look) });
   const fp = gui.addFolder('Play');
   fp.add(S, 'timeScale', 0.1, 2, 0.05).name('Time scale (T)').listen();
   extraHost.push(fp.add(clocks, 'quarter').name('0.25×'));
