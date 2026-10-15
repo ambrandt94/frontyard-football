@@ -74,6 +74,8 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
   let fuzzBlob: THREE.Mesh = null!;
   let fuzzWedge: THREE.Mesh = null!;
   let guide: LineHandle = null!;
+  let cutGuide: LineHandle = null!;
+  let cutDot: THREE.Mesh = null!;
   let route: LineHandle = null!;
   let reticle: THREE.Group = null!;
   let landing: THREE.Mesh = null!;
@@ -555,6 +557,7 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
       ribbon = makeRibbon();
       scene.add(ribbon);
       guide = makeLine(0xffffff, 2, 0.35);
+      cutGuide = makeLine(0xffd54a, 2, 0.95);
       route = makeLine(0xffffff, 16, 0.35);
       const mk = (geo: THREE.BufferGeometry, color: number, op = 0.95) => {
         const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: op, depthWrite: false, side: THREE.DoubleSide }));
@@ -562,6 +565,8 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
         scene.add(m);
         return m;
       };
+      cutDot = mk(new THREE.CircleGeometry(0.28, 18), 0xffd54a, 0.95);
+      cutDot.visible = false;
       reticle = new THREE.Group();
       const r1 = mk(new THREE.RingGeometry(0.85, 1.05, 40), 0xffeb3b);
       const r2 = mk(new THREE.PlaneGeometry(2.6, 0.12), 0xffeb3b);
@@ -783,6 +788,12 @@ export function createThreeRenderer(S: Settings): FieldRenderer {
       updateFuzz(view.aimFuzz);
       guide.show(!!view.aimGuide);
       if (view.aimGuide) guide.set([{ x: view.aimGuide.x, y: view.aimGuide.y }, { x: view.aimGuide.x2, y: view.aimGuide.y2 }], 1);
+      cutGuide.show(!!view.cutAim);
+      cutDot.visible = !!view.cutAim;
+      if (view.cutAim) {
+        cutGuide.set([{ x: view.cutAim.x, y: view.cutAim.y }, { x: view.cutAim.x2, y: view.cutAim.y2 }], 1);
+        cutDot.position.set(view.cutAim.x2, 0.08, -view.cutAim.y2);
+      }
       reticle.visible = !!view.reticle;
       if (view.reticle) reticle.position.set(view.reticle.x, 0.06, -view.reticle.y);
       route.show(!!view.route);

@@ -111,7 +111,7 @@ export function poseTargets(p: Player, st: PoseWorld, view: PoseView) {
     if (p.move && p.move.type === 'juke') add('juke');
     if (p.move && p.move.type === 'sidestep') add('cut');
     if (p.move && p.move.type === 'spin') add('spin');
-    if (p.plantT > 0) add('plant');
+    if (p.plantT > 0 || (p.cutLock ?? 0) > 0) add('plant');
     if (p.squared) add('squared');
     if (b.holder === p.id && p.pitchUntil > t) add(p.hand === 'L' ? 'pitchL' : 'pitchR');
     else if (b.holder === p.id && p.role !== 'QB' && !p.stiffArm) add(p.hand === 'L' ? 'carryL' : 'carryR');

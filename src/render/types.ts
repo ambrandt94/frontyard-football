@@ -37,6 +37,8 @@ export interface ViewState {
   aimFuzz: { x: number; y: number; fromX: number; fromY: number; color: number; radius: number } | null;
   /** Direction-charge line, in field yards. */
   aimGuide: { x: number; y: number; x2: number; y2: number } | null;
+  /** Sharp-cut aim, from the player out along the right stick. */
+  cutAim: { x: number; y: number; x2: number; y2: number } | null;
   route: { x: number; y: number; z?: number }[] | null;
   showReach: boolean;
   showArc: boolean;

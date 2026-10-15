@@ -256,6 +256,17 @@ export function createPanel(opts: {
   fm.add(S, 'ltSpeedCap', 1, 10, 0.1).name('LT speed cap (yd/s)');
   fm.add(S, 'facingTurnRate', 2, 40, 0.5).name('facing turn rate');
 
+  const fcut = gui.addFolder('Sharp cuts');
+  fcut.add(S, 'sharpCuts').name('sharp cuts (RS aim, LT plant)');
+  addSliders(fcut, [
+    ['cutRetainLight', 0.4, 1, 0.01, 'speed kept, light cut'],
+    ['cutRetainHard', 0.1, 0.9, 0.01, 'speed kept at 90°+'],
+    ['cutPlant', 0, 0.4, 0.01, 'plant time (s)'],
+    ['cutReaccel', 1, 4, 0.05, 're-accel ×'],
+    ['cutReaccelWindow', 0.05, 1, 0.01, 're-accel window (s)'],
+    ['cutAimDeadzone', 0.05, 0.85, 0.01, 'cut aim stick deadzone'],
+  ]);
+
   const fr = gui.addFolder('1v1 Run: carrier moves');
   addSliders(fr, [
     ['sidestepNormal', 0.2, 4, 0.05, 'sidestep dist @ run (yd)'],

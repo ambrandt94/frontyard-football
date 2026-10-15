@@ -109,7 +109,7 @@ describe('tackle challenge', () => {
     expect(s.state.runScore.td).toBe(1);
   });
 
-  it('still hurdles and trucks with the carrier controls', () => {
+  it('still hurdles, and an upfield flick does not truck while sharp cuts are on', () => {
     const s = sim({ aiMoveRate: 0 });
     s.setMode('run');
     s.step(STEP, press({ a: true }));
@@ -121,7 +121,7 @@ describe('tackle challenge', () => {
     const c = again.state.players.rb;
     c.vx = 0; c.vy = 6; c.facing = Math.PI / 2;
     again.step(STEP, press({ my: 1, rs: { x: 0, y: 1 } }));
-    expect(c.move?.type).toBe('truck');
+    expect(c.move).toBeNull();
   });
 
   it('does not stack the lanes when the carrier starts off center', () => {

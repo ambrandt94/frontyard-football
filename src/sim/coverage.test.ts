@@ -116,8 +116,9 @@ describe('coverage', () => {
     for (let i = 0; i < 24; i++) s.step(STEP, press({ my: -1 }));
     expect(d.y).toBeLessThan(y0 - 0.3);
     expect(st.carry!.yac).toBeGreaterThan(0.3);
-    s.step(STEP, press({ my: -1, rs: { x: 1, y: 0 } }));
-    expect(d.move?.type).toBe('sidestep');
+    s.step(STEP, press({ my: -1, rs: { x: 1, y: 0 }, lt: true }));
+    expect(d.move).toBeNull();
+    expect(Math.atan2(d.vy, d.vx)).toBeCloseTo(0, 1);
   });
 
   it('completes to the receiver and keeps the defender for yards after the catch', () => {

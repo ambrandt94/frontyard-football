@@ -335,8 +335,9 @@ describe('stick mode', () => {
     qb.vy = 6;
     live.step(STEP, press({ modeToggle: true }));
     expect(qb.stickMode).toBe('carry');
-    live.step(STEP, press({ rs: { x: 1, y: 0 }, stickHeld: true }));
-    expect(qb.move?.type).toBe('sidestep');
+    live.step(STEP, press({ rs: { x: 1, y: 0 }, stickHeld: true, lt: true }));
+    expect(qb.move).toBeNull();
+    expect(Math.atan2(qb.vy, qb.vx)).toBeCloseTo(0, 1);
 
     const aiming = boot();
     aiming.state.players.qb.vy = 6;

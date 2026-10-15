@@ -489,6 +489,7 @@ function frame(now: number) {
     arcOpacity: S.arcOpacity,
     aimFuzz,
     aimGuide,
+    cutAim: sim.cutMarker(inp),
     route,
     showReach: S.showReach,
     showArc: S.showArc,

@@ -84,6 +84,10 @@ export function createCanvasRenderer(S: Settings): FieldRenderer {
       if (view.aimGuide) {
         poly([{ x: view.aimGuide.x, y: view.aimGuide.y }, { x: view.aimGuide.x2, y: view.aimGuide.y2 }], 'rgba(255,255,255,.35)', 1.5);
       }
+      if (view.cutAim) {
+        poly([{ x: view.cutAim.x, y: view.cutAim.y }, { x: view.cutAim.x2, y: view.cutAim.y2 }], '#ffd54a', 2.5);
+        ring(view.cutAim.x2, view.cutAim.y2, 0.32, '#ffd54a', 2);
+      }
       if (view.preview && view.preview.length > 1) {
         const [cr, cg, cb] = loftRgb(view.previewLoft || 0);
         const pts = view.preview;

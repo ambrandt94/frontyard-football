@@ -49,8 +49,9 @@ describe('after the catch', () => {
 
     const run = press({ my: 1 });
     for (let i = 0; i < 20; i++) s.step(STEP, run);
-    s.step(STEP, press({ my: 1, rs: { x: 1, y: 0 } }));
-    expect(w.move?.type).toBe('sidestep');
+    s.step(STEP, press({ my: 1, rs: { x: 1, y: 0 }, lt: true }));
+    expect(w.move).toBeNull();
+    expect(Math.atan2(w.vy, w.vx)).toBeCloseTo(0, 1);
     expect(s.state.carry!.yac).toBeGreaterThan(0.2);
   });
 
@@ -108,8 +109,9 @@ describe('after the catch', () => {
     expect(st.carry?.goalLabel).toBe('TARGET');
     expect(st.players.df).toBeTruthy();
     for (let i = 0; i < 15; i++) s.step(STEP, press({ my: 1 }));
-    s.step(STEP, press({ my: 1, rs: { x: 1, y: 0 } }));
-    expect(w.move?.type).toBe('sidestep');
+    s.step(STEP, press({ my: 1, rs: { x: 1, y: 0 }, lt: true }));
+    expect(w.move).toBeNull();
+    expect(Math.atan2(w.vy, w.vx)).toBeCloseTo(0, 1);
     const d = st.players.df;
     d.x = w.x; d.y = w.y + 0.35; d.facing = Math.PI / 2;
     d.tackle = { kind: 'wrap', t0: st.t, done: false };

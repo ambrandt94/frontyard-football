@@ -117,6 +117,16 @@ export interface Player {
   easing: boolean;
   /** Low-passed stick heading for cut detection. Steering still uses the raw stick. */
   cutAim: number | null;
+  /** Seconds left on a planted sharp cut. Velocity stays on cutHead. */
+  cutLock?: number;
+  cutHead?: number;
+  cutSpd?: number;
+  /** Sim time the post-cut acceleration boost ends. */
+  cutBoostUntil?: number;
+  /** Previous LT level, so a cut is a click and not a hold. */
+  ltWas?: boolean;
+  /** This LT press already cut, so a receiver does not also square up. */
+  cutHeld?: boolean;
   squared: boolean;
   squareDir: number;
   plantT: number;

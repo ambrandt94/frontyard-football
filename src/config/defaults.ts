@@ -17,6 +17,20 @@ export interface Settings {
   cutDecayMult: number;
   easeOffStick: number;
   ltSpeedCap: number;
+  /** Right-stick aim plus an LT click plants a sharp cut. Off restores carrier flicks and LT square-up. */
+  sharpCuts: boolean;
+  /** Fraction of current speed kept on a very small cut. */
+  cutRetainLight: number;
+  /** Fraction of current speed kept on a cut of 90° or harder. */
+  cutRetainHard: number;
+  /** Seconds the new heading stays locked after the plant. */
+  cutPlant: number;
+  /** Acceleration multiplier while speed comes back after the plant. */
+  cutReaccel: number;
+  /** How long that multiplier lasts after the plant ends, seconds. */
+  cutReaccelWindow: number;
+  /** Right stick must clear this before it aims a cut. */
+  cutAimDeadzone: number;
   deadzone: number;
   /** Gamepad RT must pass this before a throw charge or a one-hand catch counts. */
   rtEngage: number;
@@ -334,6 +348,13 @@ export const DEFAULTS: Settings = {
   // A saved 0.85 (the old default) is read as 0.7. See easeThresholds.
   easeOffStick: 0.7,
   ltSpeedCap: 4,
+  sharpCuts: true,
+  cutRetainLight: 0.92,
+  cutRetainHard: 0.45,
+  cutPlant: 0.12,
+  cutReaccel: 2.2,
+  cutReaccelWindow: 0.4,
+  cutAimDeadzone: 0.35,
   deadzone: 0.15,
   rtEngage: 0.35,
   rtRelease: 0.12,

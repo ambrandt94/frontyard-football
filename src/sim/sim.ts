@@ -45,6 +45,8 @@ export interface Sim {
   /** Throw Around spawn count, 2–6. */
   setRoster(n: number): void;
   setLabels(labels: Record<string, { name: string; tint: number; look?: Look } | null>): void;
+  /** Local aim mark for a sharp cut. Null when this player is not lining one up. */
+  cutMarker(inp: SimInput): { x: number; y: number; x2: number; y2: number } | null;
 }
 
 export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
@@ -191,8 +193,75 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     if (p.squared) sp = Math.min(sp, S.ltSpeedCap);
     return sp;
   }
+  /** Human runner who should plant cuts instead of flicking or throw-aiming. */
+  function cutEligible(p: Player): boolean {
+    if (!S.sharpCuts || !humanControls(p.id)) return false;
+    if (p.role === 'OL') return false;
+    const holding = st.ball.holder === p.id && st.ball.state === 'held' && st.play.phase !== 'over';
+    if (p.role === 'DF' && !holding) return false;
+    if (p.role === 'QB' && p.stickMode !== 'carry') return false;
+    if (holding && p.stickMode === 'throw') return false;
+    return true;
+  }
+  function cutStickDir(inp: SimInput): number | null {
+    const rs = inp.rs;
+    if (!rs) return null;
+    if (Math.hypot(rs.x, rs.y) < Math.max(0.05, S.cutAimDeadzone)) return null;
+    return Math.atan2(rs.y, rs.x);
+  }
+  /** Snap onto the stick heading. Speed kept falls from a glance to a 90° plant. */
+  function executeCut(p: Player, dir: number) {
+    if (p.diveT >= 0 || p.groundT > 0 || p.z > 0.05 || p.planted || p.plantT > 0) return;
+    const sp = Math.hypot(p.vx, p.vy);
+    const cur = sp > 0.45 ? Math.atan2(p.vy, p.vx) : p.facing;
+    const ang = Math.abs(wrapAngle(dir - cur));
+    if (ang < rad(12)) return;
+    const t = clamp(ang / (Math.PI / 2), 0, 1);
+    const retain = lerp(Math.max(0, S.cutRetainLight), Math.max(0, S.cutRetainHard), t);
+    const out = sp * retain;
+    p.vx = Math.cos(dir) * out;
+    p.vy = Math.sin(dir) * out;
+    p.facing = dir;
+    p.cutHead = dir;
+    p.cutSpd = out;
+    p.cutLock = Math.max(0, S.cutPlant);
+    p.cutBoostUntil = st.t + Math.max(0, S.cutPlant) + Math.max(0, S.cutReaccelWindow);
+    p.move = null;
+    p.squared = false;
+    if (t >= 0.5) { p.boostFast = true; p.boostHold = 0; }
+    floatText('CUT', p.x, p.y, '#ffd54a');
+  }
+  /**
+   * LT click while the right stick is out plants the cut.
+   * A ball carrier never square-up from LT while this is on. A receiver still
+   * squares up when the stick is centered, and a cut click does not also square them.
+   */
+  function shapeCut(p: Player, inp: SimInput): SimInput {
+    if (!cutEligible(p)) return inp;
+    const dir = cutStickDir(inp);
+    const edge = !!inp.lt && !p.ltWas;
+    p.ltWas = !!inp.lt;
+    if (!inp.lt) p.cutHeld = false;
+    if (edge && dir != null) {
+      p.cutHeld = true;
+      if (!(p.pitchUntil > st.t)) executeCut(p, dir);
+    }
+    const holding = st.ball.holder === p.id && st.ball.state === 'held';
+    const carrier = holding || (st.mode === 'run' && p.role !== 'DF' && p.role !== 'OL');
+    if (carrier || dir != null || p.cutHeld) return { ...inp, lt: false };
+    return inp;
+  }
+  function cutMarker(inp: SimInput) {
+    const p = st.players[st.controlled];
+    if (!p || !cutEligible(p)) return null;
+    const dir = cutStickDir(inp);
+    if (dir == null) return null;
+    const len = 1.8;
+    return { x: p.x, y: p.y, x2: p.x + Math.cos(dir) * len, y2: p.y + Math.sin(dir) * len };
+  }
   function updateMovement(p: Player, inp: SimInput, dt: number) {
     let mx = inp.mx, my = inp.my; const m = Math.min(1, Math.hypot(mx, my)); p.stick = m;
+    let plantedCut = false;
     p.squared = !!inp.lt;
     if (p.role === 'QB') { const aim = st.ball.holder === 'qb' ? (inp.aim || st.aimQB) : null; if (aim) p.squareDir = aim.x >= p.x ? 0 : Math.PI; }
     else if (st.carry && p.id === st.ball.holder) p.squareDir = st.carry.goalSign < 0 ? -Math.PI / 2 : Math.PI / 2;
@@ -214,6 +283,14 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
       p.vx = 0; p.vy = 0; p.x = p.planted.x; p.y = p.planted.y;
     } else if (p.move && p.move.type === 'spin') {
       // spin owns the velocity (see applyMove)
+    } else if ((p.cutLock ?? 0) > 0) {
+      plantedCut = true;
+      const head = p.cutHead ?? p.facing;
+      const locked = p.cutSpd ?? 0;
+      p.vx = Math.cos(head) * locked;
+      p.vy = Math.sin(head) * locked;
+      p.facing = head;
+      p.cutLock = Math.max(0, (p.cutLock ?? 0) - dt);
     } else if (p.plantT > 0) {
       p.plantT -= dt; p.vx = 0; p.vy = 0;
     } else if (p.z > 0) {
@@ -255,7 +332,7 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
       p.sprint = p.boost > 0.01;
       const boostFrac = maxBoost > 0 ? p.boost / maxBoost : 0;
       const sm = 1 - (1 - S.sprintAccelMult) * boostFrac;
-      const am = p.reaccelT > st.t ? S.jukeReaccelMult : 1;
+      const am = Math.max(p.reaccelT > st.t ? S.jukeReaccelMult : 1, (p.cutBoostUntil ?? 0) > st.t ? S.cutReaccel : 1);
       if (m <= 0.001) {
         sp = Math.max(0, sp - S.releaseDecel * sm * dt);
         const cs = Math.hypot(p.vx, p.vy); if (cs > 0) { p.vx *= sp / cs; p.vy *= sp / cs; }
@@ -286,7 +363,9 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
     p.x = clamp(p.x + p.vx * dt, -4, FIELD_W + 4);
     p.y = clamp(p.y + p.vy * dt, -2, FIELD_L + 2);
 
-    if (p.diveT < 0 && p.groundT <= 0 && !p.planted) {
+    if (plantedCut) {
+      p.facing = p.cutHead ?? p.facing;
+    } else if (p.diveT < 0 && p.groundT <= 0 && !p.planted) {
       const sp = Math.hypot(p.vx, p.vy); let tf: number | null = null;
       if (p.squared) tf = p.squareDir; else if (sp > 0.5) tf = Math.atan2(p.vy, p.vx); else if (m > 0.05) tf = Math.atan2(my, mx);
       if (tf !== null) p.facing = wrapAngle(approachAngle(p.facing, tf, (p.squared ? 28 : S.facingTurnRate) * dt));
@@ -800,10 +879,11 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
 
     const qb = st.players.qb, w0 = st.players.wr, hb = st.players.hb, df = st.players.df;
     if (qb && qbIsHuman()) { applyStickMode(qb, inputs.qb); openPitchWindow(qb, inputs.qb); }
-    flickCheck(qb, inputs.qb, qb.stickMode === 'carry'); shoulderButtons(qb, inputs.qb, { hands: false, stiff: false }); pitchUpdate(qb, qb.stickMode === 'carry');
+    flickCheck(qb, inputs.qb, qb.stickMode === 'carry' && !(S.sharpCuts && humanControls(qb.id)));
+    shoulderButtons(qb, inputs.qb, { hands: false, stiff: false }); pitchUpdate(qb, qb.stickMode === 'carry');
     plantStretch(w0, inputs.wr);
-    updateMovement(qb, { ...inputs.qb, rb: false }, dt);
-    updateMovement(w0, { ...inputs.wr, rb: false }, dt);
+    updateMovement(qb, { ...shapeCut(qb, inputs.qb), rb: false }, dt);
+    updateMovement(w0, { ...shapeCut(w0, inputs.wr), rb: false }, dt);
     if (hb) updateMovement(hb, { ...(st.play.phase === 'pre' ? blankInput() : aiPitchBack(hb, qb, -1)), rb: false }, dt);
     if (df && inputs.df) stepDefenderCoverage(df, inputs.df, w0, dt);
 
@@ -1142,7 +1222,7 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
       if (st.t >= cm.windupEnd) releaseCatchThrow();
     }
     plantStretch(w, wi);
-    updateMovement(w, { ...wi, rb: false }, dt);
+    updateMovement(w, { ...shapeCut(w, wi), rb: false }, dt);
     updateMovement(qb, blankInput(), dt);
     crossScrimmage(qb);
     const airNow = b.state === 'air';
@@ -1962,9 +2042,10 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
   function advanceCarrier(dt: number, c: Player, defenders: Player[], defInputs: SimInput[], ci: SimInput) {
     const goalY = scoringLine();
     openPitchWindow(c, ci);
-    flickCheck(c, ci, true); shoulderButtons(c, ci); pitchUpdate(c, true);
+    flickCheck(c, ci, !(S.sharpCuts && humanControls(c.id)));
+    shoulderButtons(c, ci); pitchUpdate(c, true);
     if (c.handSwitchT > 0) c.handSwitchT -= dt;
-    updateMovement(c, { ...ci, a: false, x: false, rb: false }, dt);
+    updateMovement(c, { ...shapeCut(c, ci), a: false, x: false, rb: false }, dt);
     applyMove(c, dt);
     if (st.play.phase === 'live' && isGrounded(c) && c.plantT <= 0) {
       if (ci.a) { c.jumpT = 0; c.jumpH = S.hurdleHeight; c.jumpDur = S.hurdleDuration; c.move = null; floatText('HURDLE', c.x, c.y, '#a5d6a7'); st.lastHurdle = st.t; }
@@ -2224,11 +2305,11 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
       if (holding) {
         if (humanControls(p.id)) { applyStickMode(p, inp); openPitchWindow(p, inp); }
         const carryStick = !humanControls(p.id) || p.stickMode === 'carry';
-        flickCheck(p, inp, carryStick);
+        flickCheck(p, inp, carryStick && !(S.sharpCuts && humanControls(p.id)));
         shoulderButtons(p, inp);
         pitchUpdate(p, carryStick);
         if (p.handSwitchT > 0) p.handSwitchT -= dt;
-        updateMovement(p, { ...inp, a: false, x: false, rb: false }, dt);
+        updateMovement(p, { ...shapeCut(p, inp), a: false, x: false, rb: false }, dt);
         applyMove(p, dt);
         if (isGrounded(p) && p.plantT <= 0) {
           if (inp.a) {
@@ -2244,7 +2325,7 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
         }
       } else {
         plantStretch(p, inp);
-        updateMovement(p, { ...inp, rb: false }, dt);
+        updateMovement(p, { ...shapeCut(p, inp), rb: false }, dt);
       }
       const look = st.ai[id]?.look;
       const chasing = freeChaser() === id && (st.ball.state === 'air' || st.ball.state === 'dead' || st.ball.state === 'rest');
@@ -2352,5 +2433,5 @@ export function createSim(S: Settings, options?: { rng?: Rng }): Sim {
   }
 
   reset();
-  return { state: st, step, reset, switchControl, previewThrow, routeWaypoints, snap, doThrow, setMode, resolveTackle, handPos, setSlotInputs, setRoster, setLabels };
+  return { state: st, step, reset, switchControl, previewThrow, routeWaypoints, snap, doThrow, setMode, resolveTackle, handPos, setSlotInputs, setRoster, setLabels, cutMarker };
 }

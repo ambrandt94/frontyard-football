@@ -53,6 +53,7 @@ export function updateHud(opts: {
     me.plantT > 0.001 && !me.planted && 'RECOVER',
     me.move && me.move.type.toUpperCase(),
     me.sprint && 'SPRINT',
+    (me.cutLock ?? 0) > 0 && 'CUT',
     me.squared && 'SQUARED',
     me.z > 0 && 'JUMP',
     me.diveT >= 0 && 'DIVE',
