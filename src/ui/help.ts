@@ -4,12 +4,12 @@ import { MODE_LABEL } from '../modes';
 const SEEN_KEY = 'tdfb.sandbox.help.seen';
 const OPEN_KEY = 'tdfb.sandbox.help.open';
 
-type SectionId = 'everyone' | 'qb' | 'receiver' | 'carrier' | 'defender';
+type SectionId = 'everyone' | 'qb' | 'receiver' | 'carrier' | 'defender' | 'run';
 
 const MODE_SECTIONS: Record<ModeId, SectionId[]> = {
   throw: ['everyone', 'qb', 'receiver', 'carrier'],
   coverage: ['everyone', 'defender', 'receiver', 'carrier'],
-  run: ['everyone', 'carrier', 'defender'],
+  run: ['everyone', 'run', 'carrier', 'defender'],
   catch: ['everyone', 'receiver', 'carrier'],
   free: ['everyone', 'qb', 'receiver'],
 };
@@ -78,6 +78,12 @@ const BODY = [
     row(`${LB} ${RB}`, 'Tap to switch hands. Hold to stiff-arm.'),
     row(`${RT} ${RS}`, 'In CARRY, squeeze RT with the stick centered to open the pitch window, then flick. The receiver after a catch, the running back, and the QB past the line all pitch this way. A full squeeze does not throw.'),
   ].join('')),
+  section('run', 'Tackle challenge', [
+    row('The 50', 'The rep starts on the 50-yard line. You are taking it to the far end zone.'),
+    row('Two tacklers', 'They pursue from opposite sides so they do not stack on one path. Back still switches you onto one of them. The other stays AI.'),
+    row('Center', 'Lines up just in front of you and blocks the nearest tackler. They stay engaged, the tackler can slide around, and then the tackler sheds the block.'),
+    row(`${A} ${START} ${key('R')}`, 'After a tackle or a touchdown, any of these starts the next rep. During a live rep, Start or R resets back to the line.'),
+  ].join('')),
   section('defender', 'Defender', [
     row(`${LT} ${key('Q')}`, 'Break down and square up. A lunge from here is shorter and wraps more often.'),
     row(`${A} ${key('Space')}`, 'Jump, the same as a receiver, to contest or knock down a high ball.'),
@@ -129,7 +135,7 @@ export function createHelp(root: HTMLElement, pill: HTMLElement) {
 
   function applySections() {
     const show = new Set<SectionId>(showAll
-      ? ['everyone', 'qb', 'receiver', 'carrier', 'defender']
+      ? ['everyone', 'qb', 'receiver', 'carrier', 'defender', 'run']
       : MODE_SECTIONS[mode]);
     root.querySelectorAll<HTMLElement>('.help-sec').forEach((el) => {
       const id = el.dataset.sec as SectionId;

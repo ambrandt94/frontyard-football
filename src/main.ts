@@ -160,6 +160,7 @@ function paintLocalBodies() {
       delete p.tint;
       delete p.name;
       p.look = aiLook(p.role, jerseys);
+      if (p.id === 'df2') p.look = { ...p.look, helmet: 0xf5f5f5 };
     }
   }
 }
@@ -219,7 +220,15 @@ function frame(now: number) {
     inp.start = false;
   }
   if (!online && meta.switch) panel.switchControl();
-  if (!online && (meta.reset || (meta.start && !(st.controlled === 'wr' && st.ball.holder === 'qb' && st.play.phase !== 'over')))) {
+  if (!online && st.mode === 'run' && st.play.phase === 'over' && (inp.a || meta.reset || meta.start)) {
+    sim.reset();
+    st.play.phase = 'live';
+    st.play.snapT = st.t;
+    st.feedback = { text: 'GO!', color: '#9fe39f', t: st.t };
+    inp.a = false;
+    meta.start = false;
+    inp.start = false;
+  } else if (!online && (meta.reset || (meta.start && !(st.controlled === 'wr' && st.ball.holder === 'qb' && st.play.phase !== 'over')))) {
     sim.reset();
     meta.start = false;
     inp.start = false;
@@ -519,7 +528,7 @@ function updateTrails() {
   const out: { pts: { x: number; y: number }[]; color: number }[] = [];
   for (const id in st.players) {
     const p = st.players[id];
-    if (p.role === 'QB' || p.role === 'DF') continue;
+    if (p.role === 'QB' || p.role === 'DF' || p.role === 'OL') continue;
     const buf = trailBuf[id] || (trailBuf[id] = []);
     const lastP = buf[buf.length - 1];
     if (!lastP || Math.hypot(p.x - lastP.x, p.y - lastP.y) > 0.15) buf.push({ x: p.x, y: p.y, t: st.t });

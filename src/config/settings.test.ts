@@ -56,7 +56,7 @@ describe('settings schema', () => {
     expect(loadSettings(store).accel).toBe(18);
     expect(loadSettings(store).catchPaused).toBe(true);
     const saved = JSON.parse(store.data['tdfb.sandbox.settings.v1']);
-    expect(saved.schemaVersion).toBe(8);
+    expect(saved.schemaVersion).toBe(9);
     expect(saved.host.accel).toBe(18);
     expect(saved.host.deadzone).toBeUndefined();
     expect(saved.local.deadzone).toBe(DEFAULTS.deadzone);
@@ -77,7 +77,7 @@ describe('settings schema', () => {
     expect(presetSettings(loaded, 'Deep balls')?.jogSpeed).toBe(DEFAULTS.jogSpeed);
     const remaining = deletePreset(loaded, 'Arcade');
     expect(presetSettings(remaining, 'Arcade')).toBeNull();
-    expect(toDocument(custom).schemaVersion).toBe(8);
+    expect(toDocument(custom).schemaVersion).toBe(9);
   });
 
   it('reads schema 5 values bags and schema 6 host/local bags', () => {
@@ -115,6 +115,16 @@ describe('settings schema', () => {
     expect(chosen.aimMode).toBe('absolutePlus');
     expect(chosen.cameraMinExtent).toBe(40);
     expect(mergeSettings({}).aimMode).toBe('directionCharge');
+  });
+
+  it('moves the old 1v1 start onto the 50-yard line once', () => {
+    const moved = mergeSettings({ schemaVersion: 8, host: { runStartDist: 25, accel: 17 } });
+    expect(moved.runStartDist).toBe(50);
+    expect(moved.accel).toBe(17);
+    const custom = mergeSettings({ schemaVersion: 8, host: { runStartDist: 30 } });
+    expect(custom.runStartDist).toBe(30);
+    const kept = mergeSettings({ schemaVersion: 9, host: { runStartDist: 25 } });
+    expect(kept.runStartDist).toBe(25);
   });
 
   it('keeps each numeric default inside its recommended slider band', () => {

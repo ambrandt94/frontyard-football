@@ -382,6 +382,19 @@ export interface AiBag {
   seenT?: number;
   /** Next time the defender AI may flick the right stick into a lunge. */
   lungeAt?: number;
+  /** Run-mode tackler: -1 takes one side of the ball, +1 the other. */
+  lane?: number;
+  /** While a center has this tackler, the stick picks which way they try to slide. */
+  slip?: number;
+  /** After a shed, steering cannot cancel this burst until this time. */
+  escapeUntil?: number;
+  escapeDir?: number;
+  escapeSpeed?: number;
+  /** Center only. The tackler currently in the block. */
+  engage?: { id: string; t0: number } | null;
+  /** Center only. This tackler just shed and cannot be re-blocked until `shedUntil`. */
+  shedId?: string;
+  shedUntil?: number;
   /** Pump-fake bite: steer here until `biteUntil`. */
   bite?: Vec2;
   biteUntil?: number;

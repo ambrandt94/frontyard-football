@@ -330,10 +330,22 @@ export function createPanel(opts: {
     ['aiReaction', 0, 0.6, 0.01, 'AI reaction delay (s)'],
     ['aiLead', 0, 1.5, 0.05, 'AI pursuit lead'],
     ['aiMoveRate', 0, 1, 0.01, 'AI carrier move chance'],
-    ['runStartDist', 10, 50, 1, 'carrier start (yd from goal)'],
-    ['runDefenderGap', 3, 25, 0.5, 'defender start gap (yd)'],
+    ['runStartDist', 15, 70, 1, 'start, yd short of goal line'],
+    ['runDefenderGap', 3, 25, 0.5, 'tackler start gap (yd)'],
+    ['tacklerSpread', 3, 16, 0.5, 'tackler lane split (yd)'],
   ]);
-  [fr, ftk, fai].forEach((f) => f.close());
+  const fbk = gui.addFolder('1v1 Run: center block');
+  addSliders(fbk, [
+    ['blockerDepth', 0.6, 4, 0.1, 'center lineup depth (yd)'],
+    ['blockReach', 0.8, 2.5, 0.05, 'engage reach (yd)'],
+    ['blockHold', 0.2, 2, 0.05, 'hold before shed (s)'],
+    ['blockPush', 0, 6, 0.1, 'drive the pile (yd/s)'],
+    ['blockSlip', 0, 5, 0.1, 'tackler slip (yd/s)'],
+    ['blockShedSpeed', 2, 14, 0.1, 'shed burst (yd/s)'],
+    ['blockRecover', 0.1, 1.2, 0.05, 'center stagger after shed (s)'],
+    ['blockRearm', 0.1, 1.5, 0.05, 're-block the same tackler (s)'],
+  ]);
+  [fr, ftk, fai, fbk].forEach((f) => f.close());
 
   const fpt = gui.addFolder('Pitch & backs');
   fpt.add(S, 'trailingBack').name('1v1: trailing back (needs reset)');

@@ -3,6 +3,7 @@ export const PLAYER_COLORS: Record<string, number> = {
   WR: 0x1e63c9,
   RB: 0xef6c00,
   TB: 0xffb74d,
+  OL: 0xf5f5f5,
   DF: 0x6a1b9a,
 };
 

@@ -97,10 +97,10 @@ export function aiLook(role: string, humanJerseys: number[]): Look {
   return {
     jersey,
     pants: 0xf2f2f2,
-    helmet: role === 'DF' ? 0x212121 : 0xf5f5f5,
+    helmet: role === 'OL' ? 0xf9a825 : role === 'DF' ? 0x212121 : 0xf5f5f5,
     skin: 'light',
     height: DEFAULT_LOOK.height,
-    build: DEFAULT_LOOK.build,
-    limb: DEFAULT_LOOK.limb,
+    build: role === 'OL' ? 1.32 : DEFAULT_LOOK.build,
+    limb: role === 'OL' ? 1.15 : DEFAULT_LOOK.limb,
   };
 }

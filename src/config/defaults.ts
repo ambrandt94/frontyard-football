@@ -165,6 +165,24 @@ export interface Settings {
   aiMoveRate: number;
   runStartDist: number;
   runDefenderGap: number;
+  /** Yards between the two tacklers' pursuit lanes. */
+  tacklerSpread: number;
+  /** How far in front of the carrier the center lines up. */
+  blockerDepth: number;
+  /** Distance at which the center locks up a tackler. */
+  blockReach: number;
+  /** Seconds a block holds before the tackler sheds. */
+  blockHold: number;
+  /** How hard the center drives the pile, yards per second. */
+  blockPush: number;
+  /** How fast a tackler slides around the block while it holds, yards per second. */
+  blockSlip: number;
+  /** Burst speed when the tackler finally sheds, yards per second. */
+  blockShedSpeed: number;
+  /** How long the center staggers after a shed, seconds. */
+  blockRecover: number;
+  /** Seconds before the center can block the same tackler again. */
+  blockRearm: number;
   plantFallTime: number;
   stretchMaxReach: number;
   stretchRecoveryMult: number;
@@ -432,8 +450,17 @@ export const DEFAULTS: Settings = {
   aiReaction: 0.15,
   aiLead: 0.8,
   aiMoveRate: 0.7,
-  runStartDist: 25,
+  runStartDist: 50,
   runDefenderGap: 12,
+  tacklerSpread: 8,
+  blockerDepth: 1.8,
+  blockReach: 1.45,
+  blockHold: 0.9,
+  blockPush: 2.4,
+  blockSlip: 1.8,
+  blockShedSpeed: 7.5,
+  blockRecover: 0.45,
+  blockRearm: 0.7,
   plantFallTime: 0.75,
   stretchMaxReach: 1.2,
   stretchRecoveryMult: 0.6,

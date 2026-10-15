@@ -127,18 +127,23 @@ export function updateHud(opts: {
   } else if (st.mode === 'run') {
     const c = st.players.rb, d = st.players.df, rs = st.runScore;
     const yds = Math.max(0, 110 - c.y);
+    const eng = st.ai.ol?.engage;
+    const shed = (st.ai.ol?.shedUntil || 0) > st.t;
+    const block = eng ? 'ENGAGED' : shed ? 'SHED' : 'HUNTING';
+    const who = st.controlled === 'rb' ? 'Carrier (orange)' : st.controlled === 'df' ? 'Defender (purple)' : st.controlled.toUpperCase();
     stats.innerHTML = `
     <div class="row"><span>Mode</span><b style="color:#ffab40">1v1 RUN</b></div>
     <div class="row"><span>Score</span><b>TD ${rs.td} · Stops ${rs.stops}</b></div>
     <div class="row"><span>Last result</span><b>${rs.last}</b></div>
-    <div class="row"><span>Controlling</span><b>${st.controlled === 'rb' ? 'Carrier (orange)' : 'Defender (purple)'}</b></div>
+    <div class="row"><span>Controlling</span><b>${who}</b></div>
     <div class="row"><span>To goal</span><b>${yds.toFixed(1)} yd</b></div>
+    <div class="row"><span>Center</span><b>${block}</b></div>
     <div class="row"><span>Ball hand</span><b>${c.handSwitchT > 0 ? 'switching…' : c.hand === 'L' ? 'LEFT' : 'RIGHT'}${c.stiffArm ? ' · stiff-arm ' + c.stiffArm : ''}</b></div>
     <div class="row"><span>Speed</span><b>${sp.toFixed(1)} yd/s</b></div>
     ${meter}
     <div class="row"><span>Last pitch</span><b>${st.lastPitch ? (st.lastPitch.flicked ? 'flick ' : 'default ') + st.lastPitch.side + ' ' + st.lastPitch.pitchSpeed + ' yd/s' + (st.lastPitch.caughtBy ? ' ✓' : '') : '—'}</b></div>
-    <div class="row"><span>State</span><b>${flags}${d.squared ? ' · DEF SQUARED' : ''}</b></div>
-    <div class="row"><span>Play</span><b>${st.play.phase}</b></div>
+    <div class="row"><span>State</span><b>${flags}${d?.squared ? ' · DEF SQUARED' : ''}</b></div>
+    <div class="row"><span>Play</span><b>${st.play.phase}${st.play.result ? ' · ' + st.play.result : ''}</b></div>
     <div class="row"><span>Input</span><b>${input.padConnected ? 'gamepad ✓' : 'kb+mouse'} · ${rendererName}</b></div>
     ${time}`;
   } else {
@@ -167,13 +172,15 @@ export function updateHud(opts: {
   }
   if (opts.aimHint) stats.insertAdjacentHTML('beforeend', `<div class="row" id="aim-mode"><span>Aim</span><b>${opts.aimHint}</b></div>`);
   const preSnap = S.requireSnap && ((st.mode !== 'catch' && st.play.phase === 'pre') || (st.mode === 'catch' && !!st.cm && st.cm.phase === 'wait' && !S.catchPaused && !S.catchAIReceiver && st.t >= st.cm.readyT));
-  prompt.style.display = preSnap ? 'block' : 'none';
-  if (preSnap) prompt.textContent = input.padConnected ? 'Press A to snap' : 'Press Space (A) to snap';
+  const runOver = st.mode === 'run' && st.play.phase === 'over';
+  prompt.style.display = preSnap || runOver ? 'block' : 'none';
+  if (runOver) prompt.textContent = input.padConnected ? 'A or Start — run it again' : 'A, R, or Enter — run it again';
+  else if (preSnap) prompt.textContent = input.padConnected ? 'Press A to snap' : 'Press Space (A) to snap';
   const feedback = st.feedback;
   const age = feedback ? st.t - feedback.t : 99;
   fb.textContent = feedback ? feedback.text : '';
   fb.style.color = feedback ? feedback.color : '#fff';
-  fb.style.opacity = age < 1.4 ? '1' : '0';
+  fb.style.opacity = age < 1.4 || runOver ? '1' : '0';
   pad.style.display = input.padConnected ? 'none' : 'block';
   const throwing = (st.mode === 'throw' && st.controlled === 'qb' && st.ball.holder === 'qb')
     || (st.mode === 'free' && st.ball.holder === st.controlled);

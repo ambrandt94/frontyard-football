@@ -80,10 +80,16 @@ function savedSchemaVersion(raw: unknown): number {
  * is saved as schema 7 and left alone. A custom zoom is left alone too.
  */
 function migrateLoaded(raw: unknown, next: Settings, values: Record<string, unknown>) {
-  if (savedSchemaVersion(raw) >= 7) return;
-  if (values.aimMode === undefined || values.aimMode === 'absolutePlus') next.aimMode = 'directionCharge';
-  if (values.cameraMinExtent === 40) next.cameraMinExtent = DEFAULTS.cameraMinExtent;
-  if (values.cameraPadding === 7) next.cameraPadding = DEFAULTS.cameraPadding;
+  const version = savedSchemaVersion(raw);
+  if (version < 7) {
+    if (values.aimMode === undefined || values.aimMode === 'absolutePlus') next.aimMode = 'directionCharge';
+    if (values.cameraMinExtent === 40) next.cameraMinExtent = DEFAULTS.cameraMinExtent;
+    if (values.cameraPadding === 7) next.cameraPadding = DEFAULTS.cameraPadding;
+  }
+  // Schema 9 moves the old 1v1 default (25 yards from the goal) onto the 50-yard line.
+  if (version < 9 && (values.runStartDist === undefined || values.runStartDist === 25)) {
+    next.runStartDist = DEFAULTS.runStartDist;
+  }
 }
 
 /** Missing keys stay at defaults. Unknown keys and wrong types are dropped. */

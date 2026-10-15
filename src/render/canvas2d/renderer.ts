@@ -177,7 +177,7 @@ export function createCanvasRenderer(S: Settings): FieldRenderer {
       for (const id in st.players) {
         const p = st.players[id];
         const [x, y] = P(p.x, p.y);
-        if (view.showReach && id === 'df') ring(p.x, p.y, p.tackle && p.tackle.kind === 'dive' ? S.diveTackleReach : S.wrapReach, p.tackle ? '#ff5252' : p.squared ? '#ffab40' : 'rgba(255,255,255,.3)', 2);
+        if (view.showReach && (id === 'df' || id === 'df2')) ring(p.x, p.y, p.tackle && p.tackle.kind === 'dive' ? S.diveTackleReach : S.wrapReach, p.tackle ? '#ff5252' : p.squared ? '#ffab40' : 'rgba(255,255,255,.3)', 2);
         const look = p.look ?? aiLook(p.role, []);
         const jersey = look.jersey;
         ring(p.x, p.y, 1.15, hexCss(p.tint ?? jersey), 3);
