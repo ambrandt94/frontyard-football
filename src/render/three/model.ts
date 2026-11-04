@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import type { Settings } from '../../config/defaults';
 import { DEFAULT_LOOK, type Look } from '../../sim/look';
-import { bodyOf, createProceduralPlayer } from './body';
+import { bodyOf } from './body';
+import { createTheaterPlayer, loadTheaterTextures } from './theaterPlayer';
 
 export interface ModelInstance {
   holder: THREE.Group;
@@ -22,6 +23,8 @@ export interface ModelInstance {
   lastT: number | null;
   cq: Map<THREE.Object3D, THREE.Quaternion>;
   bodyKey: string;
+  /** Limb thickness used by the theater shader. 1 is the authored mesh. */
+  limb: number;
   applyLook(look: Look): void;
   dispose(): void;
 }
@@ -46,8 +49,9 @@ export const MODEL: {
   clips: [],
 };
 
-/** The body is built in code, so it is ready as soon as the page starts. */
+/** The theater mesh is bundled, so the body is ready as soon as the page starts. */
 export function loadPlayerModel(): void {
+  loadTheaterTextures();
   MODEL.ready = true;
   MODEL.failed = null;
   MODEL.scene = MODEL.scene ?? new THREE.Group();
@@ -57,7 +61,7 @@ export function loadPlayerModel(): void {
 
 export function makeModelInstance(S: Settings, look: Look = DEFAULT_LOOK): ModelInstance {
   const spec = bodyOf(look, S.modelHeightYd);
-  const inst = createProceduralPlayer(spec, S.playerScale || 1);
+  const inst = createTheaterPlayer(spec, S.playerScale || 1);
   inst.applyLook(look);
   return inst;
 }

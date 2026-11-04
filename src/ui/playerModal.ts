@@ -3,7 +3,8 @@ import { DEFAULTS } from '../config/defaults';
 import { bodyKey, bodyOf } from '../render/three/body';
 import { makeModelInstance, MODEL, type ModelInstance } from '../render/three/model';
 import { previewJog } from '../render/three/poses';
-import { hexCss, SKIN_TONE, SWATCHES, type Look } from '../sim/look';
+import { THEATER, applyRoster, applyUniform, teamById } from '../data/theater';
+import { hexCss, skinHex, SKIN_TONE, SWATCHES, type Look } from '../sim/look';
 import { draftProfile, saveProfile, type PlayerProfile } from '../sim/profile';
 import { cyclePart, moveNav, PARTS, type NavState, type Part } from './playerNav';
 
@@ -36,6 +37,26 @@ export function createPlayerModal(opts: { onSave: (profile: PlayerProfile) => vo
           <label class="pm-name">Name
             <input id="pm-name" maxlength="16" autocomplete="nickname" spellcheck="false">
           </label>
+          <div class="pm-presets">
+            <label>Roster
+              <select id="pm-roster"><option value="">Custom</option></select>
+            </label>
+            <label>Team
+              <select id="pm-team"><option value="">Custom colors</option></select>
+            </label>
+            <label>Uniform
+              <select id="pm-uniform"></select>
+            </label>
+            <label>Number
+              <input id="pm-number" type="number" min="0" max="99" step="1">
+            </label>
+            <label>Font
+              <select id="pm-font"></select>
+            </label>
+            <label>Beard
+              <select id="pm-beard"><option value="">None</option><option value="stash">Stash</option></select>
+            </label>
+          </div>
           <div class="pm-sliders">
             <label>Height <input id="pm-height" type="range" min="1.75" max="2.15" step="0.01"> <b id="pm-height-val"></b></label>
             <label>Build <input id="pm-build" type="range" min="0.75" max="1.35" step="0.01"> <b id="pm-build-val"></b></label>
@@ -69,6 +90,30 @@ export function createPlayerModal(opts: { onSave: (profile: PlayerProfile) => vo
   const fig = root.querySelector('.pm-fig') as HTMLElement;
   const loading = root.querySelector('.pm-loading') as HTMLElement;
   const nameInput = byId('pm-name') as HTMLInputElement;
+  const rosterInput = byId('pm-roster') as HTMLSelectElement;
+  const teamInput = byId('pm-team') as HTMLSelectElement;
+  const uniformInput = byId('pm-uniform') as HTMLSelectElement;
+  const numberInput = byId('pm-number') as HTMLInputElement;
+  const fontInput = byId('pm-font') as HTMLSelectElement;
+  const beardInput = byId('pm-beard') as HTMLSelectElement;
+  for (const player of THEATER.players) {
+    const opt = document.createElement('option');
+    opt.value = player.id;
+    opt.textContent = `${player.name} #${player.number}`;
+    rosterInput.appendChild(opt);
+  }
+  for (const team of THEATER.teams) {
+    const opt = document.createElement('option');
+    opt.value = team.id;
+    opt.textContent = team.name;
+    teamInput.appendChild(opt);
+  }
+  for (const font of THEATER.fonts) {
+    const opt = document.createElement('option');
+    opt.value = font;
+    opt.textContent = font;
+    fontInput.appendChild(opt);
+  }
   const heightInput = byId('pm-height') as HTMLInputElement;
   const buildInput = byId('pm-build') as HTMLInputElement;
   const limbInput = byId('pm-limb') as HTMLInputElement;
@@ -180,10 +225,36 @@ export function createPlayerModal(opts: { onSave: (profile: PlayerProfile) => vo
     saveBtn.classList.toggle('pad-focus', nav.region === 'actions' && (required || nav.actionIndex === 1));
     const cloth: Look = draft.look;
     (fig.querySelector('.helm') as HTMLElement).style.background = hexCss(cloth.helmet);
-    (fig.querySelector('.face') as HTMLElement).style.background = hexCss(SKIN_TONE[cloth.skin]);
-    (fig.querySelector('.jersey') as HTMLElement).style.background = hexCss(cloth.jersey);
+    (fig.querySelector('.face') as HTMLElement).style.background = hexCss(skinHex(cloth));
+    const jerseyFig = fig.querySelector('.jersey') as HTMLElement;
+    jerseyFig.style.background = hexCss(cloth.jersey);
+    jerseyFig.textContent = String(cloth.number);
     (fig.querySelector('.pants') as HTMLElement).style.background = hexCss(cloth.pants);
+    rosterInput.value = THEATER.players.some((player) => player.id === rosterInput.value) ? rosterInput.value : '';
+    teamInput.value = teamById(cloth.team) ? cloth.team : '';
+    fillUniforms();
+    uniformInput.value = cloth.uniform;
+    numberInput.value = String(cloth.number);
+    fontInput.value = THEATER.fonts.includes(cloth.font) ? cloth.font : (THEATER.fonts[0] || '');
+    beardInput.value = cloth.beard;
     if (nav.part !== 'skin') colorInput.value = hexCss(cloth[nav.part]);
+  }
+
+  function fillUniforms() {
+    const team = teamById(teamInput.value);
+    const previous = uniformInput.value;
+    uniformInput.innerHTML = '';
+    const custom = document.createElement('option');
+    custom.value = '';
+    custom.textContent = team ? 'Colors only' : 'Pick a team';
+    uniformInput.appendChild(custom);
+    for (const uniform of team?.uniforms ?? []) {
+      const opt = document.createElement('option');
+      opt.value = uniform.id;
+      opt.textContent = uniform.name;
+      uniformInput.appendChild(opt);
+    }
+    uniformInput.value = [...uniformInput.options].some((opt) => opt.value === previous) ? previous : '';
   }
 
   function applyNav(next: NavState) {
@@ -205,7 +276,10 @@ export function createPlayerModal(opts: { onSave: (profile: PlayerProfile) => vo
     const buttons = [...grid.querySelectorAll('button')] as HTMLButtonElement[];
     const btn = buttons[nav.colorIndex];
     if (!btn) return;
-    if (btn.dataset.skin) draft.look.skin = btn.dataset.skin === 'dark' ? 'dark' : 'light';
+    if (btn.dataset.skin) {
+      draft.look.skin = btn.dataset.skin === 'dark' ? 'dark' : 'light';
+      draft.look.skinColor = null;
+    }
     else if (btn.dataset.custom) colorInput.click();
     else if (btn.dataset.color && nav.part !== 'skin') draft.look[nav.part] = Number(btn.dataset.color);
     paint();
@@ -478,6 +552,39 @@ export function createPlayerModal(opts: { onSave: (profile: PlayerProfile) => vo
     draft.look.limb = Number(limbInput.value);
     paint();
   };
+  rosterInput.addEventListener('change', () => {
+    if (!rosterInput.value) return;
+    const player = THEATER.players.find((entry) => entry.id === rosterInput.value);
+    draft.look = applyRoster(draft.look, rosterInput.value);
+    if (player) nameInput.value = player.name;
+    paint();
+  });
+  teamInput.addEventListener('change', () => {
+    const team = teamById(teamInput.value);
+    draft.look = team ? applyUniform(draft.look, team.id, team.uniforms[0]?.id || '') : { ...draft.look, team: '', uniform: '' };
+    paint();
+  });
+  uniformInput.addEventListener('change', () => {
+    if (!teamInput.value || !uniformInput.value) {
+      draft.look.uniform = '';
+      paint();
+      return;
+    }
+    draft.look = applyUniform(draft.look, teamInput.value, uniformInput.value);
+    paint();
+  });
+  numberInput.addEventListener('input', () => {
+    draft.look.number = Math.max(0, Math.min(99, Math.round(Number(numberInput.value) || 0)));
+    paint();
+  });
+  fontInput.addEventListener('change', () => {
+    draft.look.font = fontInput.value;
+    paint();
+  });
+  beardInput.addEventListener('change', () => {
+    draft.look.beard = beardInput.value === 'stash' ? 'stash' : '';
+    paint();
+  });
   heightInput.addEventListener('input', onSlider);
   buildInput.addEventListener('input', onSlider);
   limbInput.addEventListener('input', onSlider);

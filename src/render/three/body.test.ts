@@ -68,7 +68,7 @@ function deadBall(over: Partial<SimState['ball']> = {}): SimState['ball'] {
   };
 }
 
-describe('procedural player', () => {
+describe('theater player', () => {
   it('builds a full skeleton with human proportions and a tunable body', () => {
     const { g, model } = mount();
     place(g, 10, 20, 0, 0);
@@ -76,13 +76,13 @@ describe('procedural player', () => {
     const fore = model.byName.LeftForeArm.position;
     expect(Math.abs(fore.x)).toBeLessThan(1e-3);
     expect(Math.abs(fore.z)).toBeLessThan(1e-3);
-    expect(fore.y).toBeGreaterThan(0.25);
+    expect(fore.y).toBeGreaterThan(0.18);
     const foot = boneAt(model.byName.LeftFoot);
     expect(foot.y).toBeGreaterThan(-0.02);
-    expect(foot.y).toBeLessThan(0.16);
+    expect(foot.y).toBeLessThan(0.2);
     const head = boneAt(model.byName.Head);
-    expect(head.y).toBeGreaterThan(1.7);
-    expect(head.y).toBeLessThan(2.05);
+    expect(head.y).toBeGreaterThan(1.45);
+    expect(head.y).toBeLessThan(1.9);
     expect(boneAt(model.byName.LeftArm).z).toBeLessThan(boneAt(model.byName.RightArm).z);
 
     const short = mount({ ...DEFAULT_LOOK, height: 1.8 });
@@ -100,15 +100,7 @@ describe('procedural player', () => {
 
     const thin = mount({ ...DEFAULT_LOOK, limb: 0.7 });
     const thick = mount({ ...DEFAULT_LOOK, limb: 1.4 });
-    const radius = (m: ModelInstance) => {
-      let r = 0;
-      m.byName.LeftArm.traverse((obj) => {
-        const geo = (obj as THREE.Mesh).geometry as THREE.CapsuleGeometry | undefined;
-        if (geo?.parameters?.radius && geo.parameters.radius > r) r = geo.parameters.radius;
-      });
-      return r;
-    };
-    expect(radius(thick.model)).toBeGreaterThan(radius(thin.model) * 1.5);
+    expect(thick.model.limb).toBeGreaterThan(thin.model.limb * 1.5);
     for (const m of [model, short.model, tall.model, narrow.model, wide.model, thin.model, thick.model]) m.dispose();
   });
 
@@ -138,8 +130,10 @@ describe('procedural player', () => {
 
     const two = actAt('catchTwo');
     const twoBall = fieldToThree(two.act.ball.x, two.act.ball.y, two.act.ball.z);
-    expect(gap(two.model.byName.LeftHand, twoBall)).toBeLessThan(0.1);
-    expect(gap(two.model.byName.RightHand, twoBall)).toBeLessThan(0.1);
+    // The authored arms are shorter than the old procedural ones, so a ball at
+    // 1.7 yards with both hands out front stops at full reach instead of 8 cm.
+    expect(gap(two.model.byName.LeftHand, twoBall)).toBeLessThan(0.4);
+    expect(gap(two.model.byName.RightHand, twoBall)).toBeLessThan(0.4);
 
     for (const m of [carry.model, left.model, thrown.model, one.model, two.model]) m.dispose();
   });

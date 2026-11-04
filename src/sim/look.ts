@@ -1,27 +1,74 @@
 import { PLAYER_COLORS } from '../render/colors';
 
+/** Detail colors layered on top of the jersey, pants, and helmet masks. */
+export interface KitTrim {
+  jerseyG: number;
+  jerseyB: number;
+  pantsR: number;
+  pantsG: number;
+  face: number;
+  helmetR: number;
+  helmetG: number;
+  helmetB: number;
+}
+
 /** Colors and build a person picked. Saved on this machine and sent with the roster. */
 export interface Look {
   jersey: number;
   pants: number;
   helmet: number;
   skin: 'light' | 'dark';
+  /** Exact skin tint from a FootballTheater preset. Null uses the light/dark swatch. */
+  skinColor: number | null;
   /** Crown height in yards. */
   height: number;
   /** Shoulder and hip width. 1 is average. */
   build: number;
   /** Arm and leg thickness. 1 is average. */
   limb: number;
+  /** Jersey, pants, and helmet mask ids. Empty means a solid color. */
+  jerseyPattern: string;
+  pantsPattern: string;
+  helmetPattern: string;
+  number: number;
+  font: string;
+  /** FootballTheater team and uniform. Empty when the kit was picked by hand. */
+  team: string;
+  uniform: string;
+  /** Only the local Stash mesh can be shown. Everything else is missing. */
+  beard: '' | 'stash';
+  trim: KitTrim;
 }
+
+export const DEFAULT_TRIM: KitTrim = {
+  jerseyG: 0xf4f7f8,
+  jerseyB: 0x1a1a1a,
+  pantsR: 0xf4f7f8,
+  pantsG: 0x1a1a1a,
+  face: 0x2a2e32,
+  helmetR: 0xf4f7f8,
+  helmetG: 0x1a1a1a,
+  helmetB: 0xc8102e,
+};
 
 export const DEFAULT_LOOK: Look = {
   jersey: 0x1e63c9,
   pants: 0xf2f2f2,
   helmet: 0xf5f5f5,
   skin: 'light',
+  skinColor: null,
   height: 2,
   build: 1,
   limb: 1,
+  jerseyPattern: '',
+  pantsPattern: '',
+  helmetPattern: '',
+  number: 12,
+  font: 'Ranked',
+  team: '',
+  uniform: '',
+  beard: '',
+  trim: { ...DEFAULT_TRIM },
 };
 
 /** Curated kit colors. A custom picker can still choose anything else. */
@@ -51,17 +98,50 @@ function ranged(v: unknown, fallback: number, min: number, max: number): number 
   return Math.min(max, Math.max(min, n));
 }
 
+function text(v: unknown, fallback: string): string {
+  return typeof v === 'string' ? v.slice(0, 48) : fallback;
+}
+
+function trimOf(raw: unknown): KitTrim {
+  const o = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+  return {
+    jerseyG: hexNum(o.jerseyG, DEFAULT_TRIM.jerseyG),
+    jerseyB: hexNum(o.jerseyB, DEFAULT_TRIM.jerseyB),
+    pantsR: hexNum(o.pantsR, DEFAULT_TRIM.pantsR),
+    pantsG: hexNum(o.pantsG, DEFAULT_TRIM.pantsG),
+    face: hexNum(o.face, DEFAULT_TRIM.face),
+    helmetR: hexNum(o.helmetR, DEFAULT_TRIM.helmetR),
+    helmetG: hexNum(o.helmetG, DEFAULT_TRIM.helmetG),
+    helmetB: hexNum(o.helmetB, DEFAULT_TRIM.helmetB),
+  };
+}
+
 export function parseLook(raw: unknown): Look {
   const o = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+  const skinColor = o.skinColor == null ? null : hexNum(o.skinColor, SKIN_TONE.light);
   return {
     jersey: hexNum(o.jersey, DEFAULT_LOOK.jersey),
     pants: hexNum(o.pants, DEFAULT_LOOK.pants),
     helmet: hexNum(o.helmet, DEFAULT_LOOK.helmet),
     skin: o.skin === 'dark' ? 'dark' : 'light',
+    skinColor,
     height: ranged(o.height, DEFAULT_LOOK.height, 1.6, 2.3),
     build: ranged(o.build, DEFAULT_LOOK.build, 0.6, 1.55),
     limb: ranged(o.limb, DEFAULT_LOOK.limb, 0.55, 1.65),
+    jerseyPattern: text(o.jerseyPattern, ''),
+    pantsPattern: text(o.pantsPattern, ''),
+    helmetPattern: text(o.helmetPattern, ''),
+    number: Math.round(ranged(o.number, DEFAULT_LOOK.number, 0, 99)),
+    font: text(o.font, DEFAULT_LOOK.font),
+    team: text(o.team, ''),
+    uniform: text(o.uniform, ''),
+    beard: o.beard === 'stash' ? 'stash' : '',
+    trim: trimOf(o.trim),
   };
+}
+
+export function skinHex(look: Look): number {
+  return look.skinColor == null ? SKIN_TONE[look.skin] : look.skinColor;
 }
 
 export function loadLook(): Look {
@@ -94,7 +174,8 @@ export function colorDist(a: number, b: number): number {
 export function aiLook(role: string, humanJerseys: number[]): Look {
   let jersey = role === 'DF' ? DF_JERSEY : (PLAYER_COLORS[role] ?? DEFAULT_LOOK.jersey);
   if (role === 'DF' && humanJerseys.some((j) => colorDist(j, DF_JERSEY) < 80)) jersey = DF_ALT;
-  return {
+  const number = role === 'QB' ? 12 : role === 'WR' ? 11 : role === 'RB' ? 22 : role === 'OL' ? 60 : role === 'DF' ? 54 : 12;
+  return parseLook({
     jersey,
     pants: 0xf2f2f2,
     helmet: role === 'OL' ? 0xf9a825 : role === 'DF' ? 0x212121 : 0xf5f5f5,
@@ -102,5 +183,6 @@ export function aiLook(role: string, humanJerseys: number[]): Look {
     height: DEFAULT_LOOK.height,
     build: role === 'OL' ? 1.32 : DEFAULT_LOOK.build,
     limb: role === 'OL' ? 1.15 : DEFAULT_LOOK.limb,
-  };
+    number,
+  });
 }
